@@ -1,0 +1,8 @@
+google-generativeai
+fastapi
+uvicorn
+pymongo
+chromadb
+
+
+
