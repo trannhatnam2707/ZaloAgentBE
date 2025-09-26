@@ -2,7 +2,7 @@ google-generativeai
 fastapi
 uvicorn
 pymongo
-chromadb
+pinecone
 
 
 
