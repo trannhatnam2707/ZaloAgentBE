@@ -1,6 +1,8 @@
 import datetime
 from bson import ObjectId
 from Database.MongoDB import get_mongo_collection
+from Utils.Embedding import sync_one_report
+from Database.Pinecone import index
 
 #collection Report
 reports_collection = get_mongo_collection("Report")
@@ -38,6 +40,9 @@ def create_report(data: dict) -> dict:
     
     result = reports_collection.insert_one(data)
     new_report = reports_collection.find_one({"_id": result.inserted_id})
+# ✅ Sync ngay sang Pinecone
+    sync_one_report(new_report)
+
     return report_helper(new_report)
 
 #Get All
@@ -59,5 +64,21 @@ def update_report(id: str, data: dict) -> dict | None :
     )
     if result.modified_count:
         updated = reports_collection.find_one({"_id": ObjectId(id)})
+        # ✅ Sync ngay sang Pinecone
+        sync_one_report(updated)
         return report_helper(updated)
     return None 
+
+#delete
+def delete_report(id: str) -> bool:
+    """Xóa trong Mongo và Pinecone"""
+    result = reports_collection.delete_one({"_id": ObjectId(id)})
+
+    if result.deleted_count:
+        # Xóa toàn bộ vector có metadata.report_id = id
+        index.delete(filter={"report_id": id})
+        print(f" Deleted report {id} khỏi Mongo & Pinecone")
+        return True
+    else: 
+        print(f" Report {id} không tồn tại trong Mongo")
+        return False

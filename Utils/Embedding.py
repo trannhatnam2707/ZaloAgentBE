@@ -1,3 +1,4 @@
+from bson import ObjectId
 from Config.Model import get_embedding
 from Database.MongoDB import reports_collection
 from Database.Pinecone import index
@@ -21,25 +22,32 @@ def chunk_text(text, chunk_size=300, overlap=50):
 
 
 # Đồng bộ report từ MongoDB qua Pinecone
-def sync_report_to_pinecone():
-    reports = list(reports_collection.find({}))
+def sync_one_report(report: dict, report_id: str = None):
+    """Embed + upsert một report duy nhất vào Pinecone """
+    if not report:
+        return
+    if not report_id:
+        report_id = str(report["_id"])
+
+    content = (
+        f"Report date: {report.get('date', '')}\n"
+        f"Yesterday: {report.get('yesterday', '')}\n"
+        f"Today: {report.get('today', '')}"
+    )
+    chunks = chunk_text(content)
+
     vectors = []
 
-    for report in reports:
-        report_id = str(report["_id"])
-        # Gộp text từ yesterday + today
-        content = f"Yesterday: {report.get('yesterday', '')}\nToday: {report.get('today', '')}"
-
-        # Chia chunk
-        chunks = chunk_text(content)
-
-        for i, chunk in enumerate(chunks):
+    for i, chunk in enumerate(chunks):
+            print("Chunk:", chunk)  # debug xem có nội dung không
             embedding = get_embedding(chunk)
+            print("Embedding length:", len(embedding))  # debug độ dài vector
 
             vectors.append({
                 "id": f"{report_id}_chunk{i}",  # tránh trùng id
                 "values": embedding,
                 "metadata": {
+                    "report_id": report_id, 
                     "user_id": str(report.get("user_id", "")),
                     "date": report.get("date", ""),
                     "chunk_index": i,
@@ -49,9 +57,25 @@ def sync_report_to_pinecone():
 
     if vectors:
         index.upsert(vectors=vectors)
-        print(f"✅ Synced {len(vectors)} chunks từ {len(reports)} reports vào Pinecone")
+        print(f"Synced {len(vectors)} chunks từ report {report_id} vào Pinecone")
     else:
-        print("⚠️ Không có report nào để sync.")
+        print("Không có report nào để sync.")
+    
+# def add_report(report_data: dict):
+#     """Thêm report mới và sync ngay"""
+#     result = reports_collection.insert_one(report_data)
+#     report_id = str(result.inserted_id)
+#     sync_one_report(report_data,report_id)
+#     return report_id
 
-if __name__ == "__main__":
-    sync_report_to_pinecone()
+# def update_report(report_id: str, update_data: dict):
+#     """Update report mới và sync ngay"""
+#     reports_collection.update_one({"_id": ObjectId(report_id)}, {"$set": update_data})
+#     report = reports_collection.find_one({"_id":ObjectId(report_id)})
+#     sync_one_report(report, report_id)
+
+# if __name__ == "__main__":
+#     reports = list(reports_collection.find({}))
+#     for r in reports:
+#         sync_one_report(r)
+

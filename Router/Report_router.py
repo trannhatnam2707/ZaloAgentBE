@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException
 
+
 from Schemas.Report_schema import ReportCreate, ReportResponse
-from Services.Report_service import create_report, get_all_reports, get_reports_by_user, update_report
+from Services.Report_service import create_report, delete_report, get_all_reports, get_reports_by_user, update_report
 
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
@@ -28,3 +29,11 @@ def api_update_report(report_id: str,report: ReportCreate):
     if not updated:
         raise HTTPException(status_code=404, detail="Report not found")
     return updated
+
+@router.delete("/{id}")
+def api_delete_report(id: str):
+    success = delete_report(id)
+    if success:
+        return{"message": f"Report {id} đã được xoá thành công"}
+    else:
+        raise HTTPException(status_code=404, detail="Report not found")

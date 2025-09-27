@@ -23,7 +23,7 @@ if PINECONE_INDEX not in [idx["name"] for idx in pc.list_indexes()]:
         metric="cosine",
         spec=ServerlessSpec(
             cloud="aws",
-            region="us-east-1"  # chỉnh region theo tài khoản của bạn
+            region="us-east-1"  # chỉnh region theo tài khoản của mình
         )
     )
 
