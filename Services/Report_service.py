@@ -1,12 +1,10 @@
 import datetime
 from bson import ObjectId
-from Database.MongoDB import get_mongo_collection
-from Utils.Embedding import sync_one_report
+from Database.MongoDB import get_mongo_collection, users_collection
 from Database.Pinecone import index
 
 #collection Report
 reports_collection = get_mongo_collection("Report")
-users_collection = get_mongo_collection("Users")
 
 #Helpers: convert ObjectId to string
 def report_helper(report) -> dict:
@@ -41,6 +39,7 @@ def create_report(data: dict) -> dict:
     result = reports_collection.insert_one(data)
     new_report = reports_collection.find_one({"_id": result.inserted_id})
 # ✅ Sync ngay sang Pinecone
+    from Utils.Embedding import sync_one_report
     sync_one_report(new_report)
 
     return report_helper(new_report)
@@ -65,6 +64,7 @@ def update_report(id: str, data: dict) -> dict | None :
     if result.modified_count:
         updated = reports_collection.find_one({"_id": ObjectId(id)})
         # ✅ Sync ngay sang Pinecone
+        from Utils.Embedding import sync_one_report
         sync_one_report(updated)
         return report_helper(updated)
     return None 

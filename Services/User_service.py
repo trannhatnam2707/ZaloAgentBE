@@ -5,6 +5,10 @@ from Database.MongoDB import get_mongo_collection
 
 user_collection = get_mongo_collection("Users")
 
+#Bộ nhớ session tạm (đơn giản, chưa cần JWT)
+active_sessions = {}
+
+
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -46,7 +50,16 @@ def login_user(username: str, password: str) -> dict:
     if not user:
         raise ValueError("Invalid username or password")
     
+    user_id = str(user["_id"])
+    active_sessions[user_id] = True # Đánh dấu là user đang đăng nhập
     return user_helper(user)
+
+# Đăng xuất
+def logout_user(user_id: str) -> bool:
+    if user_id in active_sessions:
+        del active_sessions[user_id]
+        return True
+    return False
 
 # Get User by ID
 def get_user_by_id(user_id: str) -> dict:

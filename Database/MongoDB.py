@@ -16,13 +16,14 @@ try:
     
     db = client[MONGO_DB_NAME]
     reports_collection = db["Report"]
+    users_collection = db["Users"]
     
 except ConnectionFailed :
     print(f"Kết nối MongoDB thất bại")
     client = None
     db = None
     reports_collection = None   
-    
+    users_collection = None
 
 #dùng để thao tác với collection trong DB
 def get_mongo_collection(collection_name: str):

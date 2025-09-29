@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from Schemas.User_schema import UserCreate, UserLogin, UserResponse
-from Services.User_service import create_user, delete_user, get_user_by_id, login_user
+from Services.User_service import create_user, delete_user, get_user_by_id, login_user, logout_user
 
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -18,6 +18,13 @@ def api_login_user(user_login: UserLogin):
         return login_user(user_login.username, user_login.password)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+@router.post("/logout")
+def api_logout_user(user_id: str):
+    if logout_user(user_id):
+        return {"message": "Logout successful"}
+    raise HTTPException(status_code=400, detail="User not logger in")
+
 
 # Get All Users
 # @router.get("/", response_model=list[UserResponse])

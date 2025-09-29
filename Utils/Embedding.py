@@ -2,6 +2,9 @@ from bson import ObjectId
 from Config.Model import get_embedding
 from Database.MongoDB import reports_collection
 from Database.Pinecone import index
+from Services.Report_service import users_collection
+
+
 
 # Hàm chia chunk
 def chunk_text(text, chunk_size=300, overlap=50):
@@ -28,8 +31,13 @@ def sync_one_report(report: dict, report_id: str = None):
         return
     if not report_id:
         report_id = str(report["_id"])
+    
+    #Lấy user_name từ users_collection bằng user_id
+    user = users_collection.find_one({"_id": ObjectId(report["user_id"])})
+    user_name = user["username"] if user else "Unknown"
 
     content = (
+        f"User: {user_name}\n"
         f"Report date: {report.get('date', '')}\n"
         f"Yesterday: {report.get('yesterday', '')}\n"
         f"Today: {report.get('today', '')}"
@@ -51,7 +59,8 @@ def sync_one_report(report: dict, report_id: str = None):
                     "user_id": str(report.get("user_id", "")),
                     "date": report.get("date", ""),
                     "chunk_index": i,
-                    "text": chunk
+                    "text": chunk,
+                    "user_name": user_name,  
                 }
             })
 
