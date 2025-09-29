@@ -31,7 +31,7 @@ Context từ database:
 Câu hỏi: {question}
 
 Hãy trả lời dựa trên context được cung cấp. 
-Nếu không có thông tin liên quan trong context, hãy trả lời dựa trên kiến thức của bạn.
+Nếu không có thông tin liên quan trong context, thì đừng bịa ra gì cả. Hãy trả lời là không tìm được thông tin
 """
         else:
             full_prompt = f"""
