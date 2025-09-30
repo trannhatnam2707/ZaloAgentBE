@@ -1,4 +1,3 @@
-from unittest.mock import Base
 from pydantic import BaseModel
 
 
@@ -14,6 +13,8 @@ class UserLogin(BaseModel):
 
 class UserResponse(UserBase):
     id: str
-   
+
+class LogoutRequest(BaseModel):
+    user_id: str
 
 

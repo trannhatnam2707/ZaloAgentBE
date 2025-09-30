@@ -56,10 +56,19 @@ def login_user(username: str, password: str) -> dict:
 
 # Đăng xuất
 def logout_user(user_id: str) -> bool:
-    if user_id in active_sessions:
-        del active_sessions[user_id]
-        return True
+    # Kiểm tra user có tồn tại trong DB không
+    try:
+        user = get_user_by_id(user_id)
+        if user:
+            # Xóa khỏi active_sessions nếu có
+            if user_id in active_sessions:
+                del active_sessions[user_id]
+            return True
+    except:
+        pass
+    
     return False
+   
 
 # Get User by ID
 def get_user_by_id(user_id: str) -> dict:

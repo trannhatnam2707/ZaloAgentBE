@@ -21,7 +21,7 @@ class Agent:
         self.llm = llm
         self.logger = AgentLogger()
     
-    def run(self, user_query: str, top_k: int=1000):
+    def run(self, user_query: str, top_k: int=5):
         # Tạo prompt yêu cầu LLM lên kế hoạch 
         planning_prompt = f"""
         {SYSTEM_PROMPT}

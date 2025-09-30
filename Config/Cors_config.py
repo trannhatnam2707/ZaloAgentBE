@@ -11,7 +11,7 @@ def configure_cors(app):
         allow_methods=["*"],  # Cho phép tất cả HTTP methods
         allow_headers=["*"],  # Cho phép tất cả headers
     )
-    
+
     # Hoặc cấu hình cụ thể hơn:
     # app.add_middleware(
     #     CORSMiddleware,

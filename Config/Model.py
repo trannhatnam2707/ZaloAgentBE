@@ -19,7 +19,7 @@ def generate_gemini_response(question: str, context: str = "", system_prompt: st
     Gọi gemini-2.5-flash để tạo câu trả lời
     """
     try:
-        model = genai.GenerativeModel('gemini-2.5-flash')   
+        model = genai.GenerativeModel('gemini-2.5-flash')                                       
 
         if context:
             full_prompt = f"""

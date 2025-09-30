@@ -7,7 +7,7 @@ router = APIRouter()
 
 class AskRequest(BaseModel):
     question: str
-    top_k: int = 1000
+    top_k: int = 5
 
 @router.post("/ask")
 def ask_endpoint(req: AskRequest):
