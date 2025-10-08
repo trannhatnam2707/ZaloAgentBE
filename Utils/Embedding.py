@@ -4,8 +4,6 @@ from Database.MongoDB import reports_collection
 from Database.Pinecone import index
 from Services.Report_service import users_collection
 
-
-
 # Hàm chia chunk
 def chunk_text(text, chunk_size=300, overlap=50):
     chunks = []

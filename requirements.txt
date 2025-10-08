@@ -3,6 +3,11 @@ fastapi
 uvicorn
 pymongo
 pinecone
+mcp
+fastmcp
+pydantic
+typing-extensions
 
 
-
+# & f:/AGENTZALO/agentzalo_env/Scripts/Activate.ps1
+# 
