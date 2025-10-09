@@ -7,7 +7,7 @@ class Tools:
     def search_reports(query: str ,top_k: int = 10):
         embedding = get_embedding(query)
         res = index.query(vector=embedding, top_k = top_k, include_metadata = True)
-        return [m for m in res["matches"] if m["score"] >= 0.6]
+        return [m for m in res["matches"] if m["score"] >= 0.4]
 
     @staticmethod
     def ask_llm(question: str, context: str=" ", system_prompt: str=" "):

@@ -1,22 +1,28 @@
+import re
+from datetime import datetime, timedelta
 from Config.Model import generate_gemini_response
 from Utils.Logger import AgentLogger
 from Utils.Tools import Tools
 from Utils.MCP_Client import mcp_client
-from datetime import datetime, timedelta
 
-
+# ✅ SYSTEM PROMPT ĐÃ ĐƯỢC SỬA - Bắt buộc chỉ dùng context thực tế
 SYSTEM_PROMPT = """
-Bạn là một Agent hỗ trợ phân tích báo cáo công việc hàng ngày.
-Bạn có thể sử dụng các công cụ sau:
-    - search_reports[query]: tìm các thông tin vector từ Pinecone database.
-    - Answer [context, question]: dùng LLM để tạo câu trả lời dựa vào context
-    - MCP Tools: create_report, update_report, summarize_report
+Bạn là một Agent hỗ trợ trả lời câu hỏi về báo cáo công việc hàng ngày.
 
-Luôn làm theo kế hoạch:
-Plan: mô tả kế hoạch
-Act: chọn công cụ và tham số để thực hiện kế hoạch
-Observation: Quan sát kết quả trả về
-Final answer: câu trả lời cuối cùng cho người dùng
+NGUYÊN TẮC QUAN TRỌNG:
+1. CHỈ trả lời dựa trên CONTEXT được cung cấp từ database
+2. TUYỆT ĐỐI KHÔNG tự bịa hoặc suy đoán thông tin không có trong context
+3. Nếu không tìm thấy thông tin trong context → trả lời rõ ràng là "Không tìm thấy thông tin"
+
+CÁC CÔNG CỤ:
+- search_reports[query]: Tìm kiếm thông tin từ Pinecone database
+- Answer[context, question]: Tạo câu trả lời DỰA TRÊN context có sẵn
+
+QUY TRÌNH:
+1. Plan: Lập kế hoạch ngắn gọn
+2. Act: Gọi search_reports với query phù hợp
+3. Observation: Mô tả kết quả TÌM ĐƯỢC (không bịa)
+4. Final answer: Trả lời DỰA TRÊN context, nếu không có → nói rõ không tìm thấy
 """
 
 INTENT_ANALYSIS_PROMPT = """
@@ -39,12 +45,6 @@ Trả về JSON với format:
     "intent_type": "action" hoặc "question",
     "reason": "giải thích ngắn gọn"
 }}
-
-Ví dụ phân loại:
-- "Tạo report hôm nay cho tôi" → {{"intent_type": "action", "reason": "Tạo dữ liệu mới"}}
-- "Cập nhật report ngày 1/1 với nội dung ABC" → {{"intent_type": "action", "reason": "Cập nhật dữ liệu"}}
-- "Hôm qua tôi làm gì?" → {{"intent_type": "question", "reason": "Truy vấn thông tin"}}
-- "Tóm tắt báo cáo tuần này" → {{"intent_type": "question", "reason": "Đọc và tóm tắt dữ liệu có sẵn"}}
 """
 
 
@@ -69,51 +69,79 @@ class Agent:
     
     def normalize_query_with_context(self, user_query: str, username: str) -> str:
         """
-        Chuẩn hóa câu hỏi bằng cách:
+        Chuẩn hóa câu hỏi bằng regex + datetime (không dùng AI)
         1. Thay "tôi", "mình", "em" → username
-        2. Thay "hôm qua" → ngày cụ thể
-        3. Thay "hôm nay" → ngày cụ thể
+        2. Chuyển đổi các format ngày → YYYY-MM-DD
+        3. Thay "hôm qua", "hôm nay" → ngày cụ thể
         """
-        import json
+        today = datetime.now()
+        yesterday = today - timedelta(days=1)
+        current_year = today.year
         
-        today = datetime.now().strftime("%Y-%m-%d")
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        normalized = user_query
         
-        prompt = f"""
-Chuẩn hóa câu hỏi sau để tìm kiếm trong database:
-
-Câu gốc: "{user_query}"
-Username: {username}
-Ngày hôm nay: {today}
-Ngày hôm qua: {yesterday}
-
-QUY TẮC:
-1. Thay "tôi", "mình", "em" → {username}
-2. Thay "hôm qua" → {yesterday}
-3. Thay "hôm nay" → {today}
-4. Giữ nguyên ý nghĩa câu hỏi gốc
-
-VÍ DỤ:
-- "tôi hôm qua làm gì?" → "{username} ngày {yesterday} làm gì?"
-- "hôm nay mình có task gì?" → "{username} ngày {today} có task gì?"
-- "hôm qua làm được gì?" → "{username} ngày {yesterday} làm được gì?"
-
-Trả về JSON:
-{{
-    "normalized_query": "câu hỏi đã chuẩn hóa"
-}}
-"""
+        # Bước 1: Thay đại từ nhân xưng → username
+        normalized = re.sub(r'\b(tôi|mình|em)\b', username, normalized, flags=re.IGNORECASE)
         
-        try:
-            response = generate_gemini_response(question=user_query, system_prompt=prompt)
-            clean_response = response.replace("```json", "").replace("```", "").strip()
-            result = json.loads(clean_response)
-            normalized = result.get("normalized_query", user_query)
-            print(f"🔄 Normalized query: '{user_query}' → '{normalized}'")
-            return normalized
-        except Exception as e:
-            print(f"⚠️ Cannot normalize query: {e}, using original")
-            return user_query
+        # Bước 2: Thay "hôm qua" → ngày cụ thể
+        normalized = re.sub(r'\bhôm qua\b', yesterday.strftime("%Y-%m-%d"), normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r'\bhôm nay\b', today.strftime("%Y-%m-%d"), normalized, flags=re.IGNORECASE)
+        
+        # Bước 3: Chuyển đổi format ngày
+        # Pattern: dd/mm/yyyy hoặc dd/mm/yy
+        def replace_date_full(match):
+            day = int(match.group(1))
+            month = int(match.group(2))
+            year = int(match.group(3))
+            if year < 100:  # 2 chữ số năm
+                year += 2000
+            try:
+                date_obj = datetime(year, month, day)
+                return date_obj.strftime("%Y-%m-%d")
+            except:
+                return match.group(0)
+        
+        normalized = re.sub(r'\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b', replace_date_full, normalized)
+        
+        # Pattern: dd/mm (không có năm) → thêm năm hiện tại
+        def replace_date_short(match):
+            day = int(match.group(1))
+            month = int(match.group(2))
+            try:
+                date_obj = datetime(current_year, month, day)
+                return date_obj.strftime("%Y-%m-%d")
+            except:
+                return match.group(0)
+        
+        # Chỉ thay thế nếu chưa có format YYYY-MM-DD
+        if not re.search(r'\d{4}-\d{2}-\d{2}', normalized):
+            normalized = re.sub(r'\b(\d{1,2})/(\d{1,2})\b', replace_date_short, normalized)
+        
+        # Pattern: "ngày X tháng Y" → YYYY-MM-DD
+        def replace_date_text(match):
+            day = int(match.group(1))
+            month = int(match.group(2))
+            year = int(match.group(3)) if match.group(3) else current_year
+            try:
+                date_obj = datetime(year, month, day)
+                return date_obj.strftime("%Y-%m-%d")
+            except:
+                return match.group(0)
+        
+        normalized = re.sub(
+            r'ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})(?:\s+năm\s+(\d{4}))?',
+            replace_date_text,
+            normalized,
+            flags=re.IGNORECASE
+        )
+        
+        # Log để debug
+        if normalized != user_query:
+            print(f"🔄 [NORMALIZE]")
+            print(f"   Input:  '{user_query}'")
+            print(f"   Output: '{normalized}'")
+        
+        return normalized
     
     def handle_action(self, username: str, user_query: str) -> dict:
         """Xử lý khi user muốn thực hiện action (gọi MCP)"""
@@ -148,35 +176,53 @@ Trả về JSON:
     def handle_question(self, user_query: str, username: str, top_k: int = 10) -> dict:
         """Xử lý khi user hỏi thông tin (search + answer)"""
         
-        # ✅ Chuẩn hóa câu hỏi với username
+        # Chuẩn hóa câu hỏi với username
         search_query = self.normalize_query_with_context(user_query, username)
         
-        # Lập kế hoạch
-        planning_prompt = f"""
-        {SYSTEM_PROMPT}
-
-        User {username} hỏi: {user_query}
-        
-        Bắt đầu lập kế hoạch:
-        """
-        
-        plan = generate_gemini_response(question=user_query, system_prompt=planning_prompt)
-        self.logger.log("Plan", plan)
+        # ✅ SỬA: Bỏ planning step - LLM không cần plan, chỉ cần search và answer
+        self.logger.log("Search Query", search_query)
         
         # Search reports trong Pinecone với query đã chuẩn hóa
         matches = Tools.search_reports(search_query, top_k=top_k)
-        self.logger.log("Act", f"SearchReports[{search_query}]")
-        self.logger.log("Observation", f"Tìm thấy {len(matches)} kết quả")
+        self.logger.log("Search Results", f"Tìm thấy {len(matches)} kết quả")
         
         # Gom context từ kết quả search
-        context = "\n".join([m.get("metadata", {}).get("text", "") for m in matches]) if matches else ""
+        if matches:
+            context_parts = []
+            for m in matches:
+                text = m.get("metadata", {}).get("text", "")
+                context_parts.append(text)
+            context = "\n\n---\n\n".join(context_parts)
+        else:
+            context = ""
+        
+        # ✅ PROMPT MỚI: Bắt buộc chỉ dùng context
+        answer_prompt = f"""
+Bạn là trợ lý AI trả lời câu hỏi về báo cáo công việc.
+
+QUY TẮC BẮT BUỘC:
+1. CHỈ sử dụng thông tin có trong CONTEXT bên dưới
+2. KHÔNG tự bịa hoặc suy đoán thông tin
+3. Nếu context KHÔNG có thông tin cần thiết → Trả lời: "Không tìm thấy thông tin về [vấn đề] trong các báo cáo."
+4. Khi trả lời, trích xuất CHÍNH XÁC từ context (tên người, ngày, công việc)
+
+CONTEXT TỪ DATABASE:
+{context if context else "Không có dữ liệu liên quan."}
+
+CÂU HỎI: {user_query}
+
+HÃY TRẢ LỜI:
+- Nếu có thông tin trong context → Tóm tắt rõ ràng
+- Nếu không có thông tin → Nói rõ không tìm thấy
+"""
         
         # Gọi LLM để ra câu trả lời cuối cùng
-        final_answer = Tools.ask_llm(
+        final_answer = generate_gemini_response(
             question=user_query,
             context=context,
-            system_prompt=SYSTEM_PROMPT
+            system_prompt=answer_prompt
         )
+        
         self.logger.log("Final Answer", final_answer)
         
         return {
@@ -199,7 +245,7 @@ Trả về JSON:
         print(f"   - Query: {user_query}")
         print(f"{'='*120}\n")
         
-        # ✅ Kiểm tra username
+        # Kiểm tra username
         if not username:
             return {
                 "answer": "❌ Lỗi: Không xác định được user. Vui lòng đăng nhập lại.",
