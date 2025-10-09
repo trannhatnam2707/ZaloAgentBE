@@ -5,7 +5,7 @@ from pymongo import MongoClient
 MONGO_URI = "mongodb://localhost:27017/"
 MONGO_DB_NAME = "AgentZalo"
 
-client = MongoClient(MONGO_URI)
+client = MongoClient(MONGO_URI) 
 db = client[MONGO_DB_NAME]
 
 try:

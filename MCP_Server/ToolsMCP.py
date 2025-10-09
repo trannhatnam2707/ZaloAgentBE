@@ -5,6 +5,11 @@ from bson import ObjectId
 import google.generativeai as genai
 from dotenv import load_dotenv
 
+import sys
+import os
+# Thêm thư mục cha vào path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from Database.MongoDB import get_mongo_collection, users_collection
 from Utils.Embedding import sync_one_report
 
@@ -36,18 +41,70 @@ reports_collection = get_mongo_collection("Report")
 # =====================================================
 # 🧠 Tool: Tóm tắt report bằng AI
 # =====================================================
-def summarize_report(content: str) -> str:
-    """Tóm tắt nội dung report bằng AI"""
+def summarize_report(username: str, date: str = None) -> dict:
+    """
+    Tóm tắt report của user
+    
+    Args:
+        username: Tên user
+        date: Ngày cụ thể (optional), nếu không có thì tóm tắt tất cả
+    
+    Returns:
+        dict: Kết quả tóm tắt
+    """
+    # Tìm user
+    user = users_collection.find_one({"username": username})
+    if not user:
+        return {"error": f"Không tìm thấy user '{username}'"}
+    
+    user_id = user["_id"]
+    
+    # Tìm reports
+    query = {"user_id": user_id}
+    if date:
+        query["date"] = date
+    
+    reports = list(reports_collection.find(query))
+    
+    if not reports:
+        return {"error": f"Không tìm thấy report nào cho user '{username}'"}
+    
+    # Tạo nội dung để tóm tắt
+    content_parts = []
+    for r in reports:
+        content_parts.append(f"""
+Ngày: {r.get('date', '')}
+Hôm qua: {r.get('yesterday', '')}
+Hôm nay: {r.get('today', '')}
+---
+""")
+    
+    full_content = "\n".join(content_parts)
+    
+    # Gọi AI để tóm tắt
     model = genai.GenerativeModel("gemini-2.5-flash")
-    prompt = f"Tóm tắt nội dung sau:\n{content}"
+    prompt = f"""
+Tóm tắt các báo cáo công việc sau đây của user {username}:
+
+{full_content}
+
+Hãy tóm tắt ngắn gọn, rõ ràng những công việc chính đã làm.
+"""
+    
     response = model.generate_content(prompt)
-    return response.text.strip()
+    summary = response.text.strip()
+    
+    return {
+        "message": f"✅ Đã tóm tắt {len(reports)} report(s)",
+        "summary": summary,
+        "reports_count": len(reports)
+    }
 
 
 # =====================================================
 # 🧠 Tool: Tạo mới / cập nhật report
 # =====================================================
-def save_report_tool(username: str, date: str, yesterday: str = None, today: str = None, update_request: str = None) -> dict:
+def save_report_tool(username: str, date: str, yesterday: str = None, today: str = None, update_request: str = None, new_date: str = None) -> dict:
     """
     🧩 Tạo mới hoặc cập nhật report tự động.
     - Nếu chưa có → tạo mới
@@ -157,18 +214,47 @@ def save_report_tool(username: str, date: str, yesterday: str = None, today: str
 # =====================================================
 def analyze_user_intent(username: str, user_input: str) -> dict:
     """AI phân tích người dùng muốn làm gì: tạo, cập nhật hay tóm tắt"""
+    from datetime import datetime
+    
     model = genai.GenerativeModel("gemini-2.5-flash")
     prompt = f"""
     Người dùng nhập: "{user_input}"
+    Ngày hiện tại: {datetime.now().strftime('%Y-%m-%d')}
+    
     Xác định hành động phù hợp (create_report, update_report, summarize_report)
-    và trích xuất thông tin (date, yesterday, today, update_request).
+    và trích xuất thông tin.
+    
+    QUAN TRỌNG về format date (YYYY-MM-DD):
+    - Nếu user nói "hôm nay" → dùng ngày hiện tại
+    - Nếu user nói "ngày 09/10/2025" → chuyển thành "2025-10-09"
+    - Nếu user nói "ngày 08/10/2025" → chuyển thành "2025-10-08"
+    
+    QUAN TRỌNG về update_report:
+    - "date" là ngày của report CẦN CẬP NHẬT (report hiện có trong DB)
+    - "new_date" là ngày MỚI muốn đổi (nếu user muốn đổi ngày)
+    - "update_request" là yêu cầu cập nhật chi tiết
+    
+    Ví dụ phân tích:
+    1. "Tạo report hôm nay, hôm qua làm A, hôm nay làm B"
+       → {{"action": "create_report", "date": "2025-10-09", "yesterday": "làm A", "today": "làm B"}}
+    
+    2. "Cập nhật report ngày 08/10, thêm task C"
+       → {{"action": "update_report", "date": "2025-10-08", "update_request": "thêm task C vào today"}}
+    
+    3. "Cập nhật ngày 08/10/2025 thành ngày 09/10/2025 với nội dung today là X"
+       → {{"action": "update_report", "date": "2025-10-08", "new_date": "2025-10-09", "update_request": "đổi date thành 2025-10-09 và today thành X"}}
+    
+    4. "Tóm tắt báo cáo tuần này"
+       → {{"action": "summarize_report"}}
+    
     Trả về JSON hợp lệ với keys:
     {{
         "action": "create_report" | "update_report" | "summarize_report",
-        "date": "...",
-        "yesterday": "...",
-        "today": "...",
-        "update_request": "..."
+        "date": "YYYY-MM-DD (ngày của report cần thao tác)",
+        "new_date": "YYYY-MM-DD (chỉ có khi user muốn đổi ngày)" (optional),
+        "yesterday": "..." (chỉ cho create_report),
+        "today": "..." (chỉ cho create_report),
+        "update_request": "..." (chỉ cho update_report)
     }}
     """
     ai_response = model.generate_content(prompt).text.strip()
