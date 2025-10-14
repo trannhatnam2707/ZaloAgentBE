@@ -1,222 +1,319 @@
 import re
 from datetime import datetime, timedelta
+from typing import List, Dict
 from Config.Model import generate_gemini_response
 from Utils.Logger import AgentLogger
 from Utils.Tools import Tools
 from Utils.MCP_Client import mcp_client
 
-# ✅ SYSTEM PROMPT ĐÃ ĐƯỢC SỬA - Bắt buộc chỉ dùng context thực tế
-SYSTEM_PROMPT = """
-Bạn là một Agent hỗ trợ trả lời câu hỏi về báo cáo công việc hàng ngày.
+# ✅ SYSTEM PROMPT - Agent như người tư vấn viên
+ADVISOR_SYSTEM_PROMPT = """
+Bạn là một TƯ VẤN VIÊN THÔNG MINH và THÂN THIỆN, hỗ trợ quản lý và tra cứu báo cáo công việc.
 
-NGUYÊN TẮC QUAN TRỌNG:
-1. CHỈ trả lời dựa trên CONTEXT được cung cấp từ database
-2. TUYỆT ĐỐI KHÔNG tự bịa hoặc suy đoán thông tin không có trong context
-3. Nếu không tìm thấy thông tin trong context → trả lời rõ ràng là "Không tìm thấy thông tin"
+TÍNH CÁCH:
+- Thân thiện, nhiệt tình, luôn sẵn sàng giúp đỡ
+- Giao tiếp tự nhiên như người thật, không cứng nhắc
+- Chủ động đưa ra gợi ý khi phù hợp
+- Nhớ và tham chiếu đến các cuộc trò chuyện trước đó
+- Giải thích rõ ràng khi người dùng không hiểu
 
-CÁC CÔNG CỤ:
-- search_reports[query]: Tìm kiếm thông tin từ Pinecone database
-- Answer[context, question]: Tạo câu trả lời DỰA TRÊN context có sẵn
+KHẢ NĂNG:
+1. 🔍 TRA CỨU: Tìm kiếm thông tin về báo cáo công việc
+2. 📝 TẠO MỚI: Giúp tạo báo cáo mới
+3. ✏️ CẬP NHẬT: Cập nhật/sửa báo cáo có sẵn
+4. 📊 TÓM TẮT: Tóm tắt công việc theo ngày/tuần/tháng
+5. 💬 TƯ VẤN: Tư vấn cách viết báo cáo hiệu quả
 
-QUY TRÌNH:
-1. Plan: Lập kế hoạch ngắn gọn
-2. Act: Gọi search_reports với query phù hợp
-3. Observation: Mô tả kết quả TÌM ĐƯỢC (không bịa)
-4. Final answer: Trả lời DỰA TRÊN context, nếu không có → nói rõ không tìm thấy
+CÁCH TRẢ LỜI:
+- Nếu người dùng hỏi mơ hồ → Hỏi lại để làm rõ (ví dụ: "Bạn muốn xem báo cáo ngày nào nhỉ?")
+- Nếu không có dữ liệu → Gợi ý hành động tiếp theo
+- Nếu người dùng cần tạo/cập nhật → Hướng dẫn từng bước
+- Luôn kết thúc bằng câu hỏi hoặc gợi ý nếu phù hợp
+
+QUY TẮC QUAN TRỌNG:
+- CHỈ trả lời dựa trên CONTEXT hoặc kết quả SEARCH
+- KHÔNG bịa thông tin không có trong dữ liệu
+- Nếu không tìm thấy → Nói rõ và đề xuất giải pháp
+- Sử dụng emoji một cách tự nhiên để thân thiện hơn
 """
 
-INTENT_ANALYSIS_PROMPT = """
-Phân tích ý định của người dùng từ câu hỏi/yêu cầu sau:
-"{user_query}"
+class ConversationMemory:
+    """Quản lý bộ nhớ chat session"""
+    
+    def __init__(self, max_history: int = 10):
+        self.messages: List[Dict] = []
+        self.max_history = max_history
+    
+    def add_user_message(self, message: str):
+        """Thêm tin nhắn từ user"""
+        self.messages.append({
+            "role": "user",
+            "content": message,
+            "timestamp": datetime.now().isoformat()
+        })
+        self._trim_history()
+    
+    def add_assistant_message(self, message: str):
+        """Thêm tin nhắn từ assistant"""
+        self.messages.append({
+            "role": "assistant",
+            "content": message,
+            "timestamp": datetime.now().isoformat()
+        })
+        self._trim_history()
+    
+    def _trim_history(self):
+        """Giữ lại N tin nhắn gần nhất"""
+        if len(self.messages) > self.max_history * 2:  # user + assistant = 2 messages
+            self.messages = self.messages[-(self.max_history * 2):]
+    
+    def get_context_string(self) -> str:
+        """Chuyển lịch sử thành chuỗi context cho LLM"""
+        if not self.messages:
+            return ""
+        
+        context_parts = []
+        for msg in self.messages[-6:]:  # Lấy 3 cặp hội thoại gần nhất
+            role = "Người dùng" if msg["role"] == "user" else "Tư vấn viên"
+            context_parts.append(f"{role}: {msg['content']}")
+        
+        return "\n".join(context_parts)
+    
+    def clear(self):
+        """Xóa lịch sử (khi user muốn bắt đầu lại)"""
+        self.messages = []
+    
+    def get_summary(self) -> str:
+        """Tóm tắt ngắn gọn cuộc trò chuyện"""
+        if not self.messages:
+            return "Chưa có cuộc trò chuyện nào."
+        
+        user_messages = [m["content"] for m in self.messages if m["role"] == "user"]
+        return f"Đã trao đổi {len(self.messages)} tin nhắn về: {', '.join(user_messages[:3])}"
 
-Xác định xem người dùng muốn:
-1. "action" - Thực hiện hành động CẬP NHẬT/TẠO MỚI dữ liệu (tạo report mới, cập nhật report có sẵn)
-2. "question" - Hỏi thông tin/tra cứu/tóm tắt về reports đã có
 
-⚠️ QUAN TRỌNG - Phân biệt rõ:
-- Các từ khóa "TẠO MỚI" hoặc "CẬP NHẬT" dữ liệu → "action"
-  Ví dụ: "tạo report", "cập nhật report", "sửa report", "thêm vào report"
-  
-- Các từ khóa "ĐỌC/TRA CỨU/TÓM TẮT" dữ liệu có sẵn → "question"
-  Ví dụ: "tóm tắt", "hỏi", "xem", "kiểm tra", "báo cáo", "làm gì", "có gì"
-
-Trả về JSON với format:
-{{
-    "intent_type": "action" hoặc "question",
-    "reason": "giải thích ngắn gọn"
-}}
-"""
-
-
-class Agent:
-    def __init__(self, llm: str = "gemini-2.5-flash"):
-        self.llm = llm
+class ConversationalAgent:
+    """Agent với khả năng ghi nhớ và tư vấn"""
+    
+    def __init__(self):
         self.logger = AgentLogger()
+        # Dictionary lưu memory theo session_id
+        self.sessions: Dict[str, ConversationMemory] = {}
     
-    def analyze_intent(self, user_query: str) -> dict:
-        """Phân tích ý định người dùng: action hay question"""
-        import json
-        
-        prompt = INTENT_ANALYSIS_PROMPT.format(user_query=user_query)
-        response = generate_gemini_response(question=user_query, system_prompt=prompt)
-        
-        try:
-            clean_response = response.replace("```json", "").replace("```", "").strip()
-            intent_data = json.loads(clean_response)
-            return intent_data
-        except:
-            return {"intent_type": "question", "reason": "Không phân tích được, mặc định là câu hỏi"}
+    def get_or_create_session(self, session_id: str) -> ConversationMemory:
+        """Lấy hoặc tạo session mới"""
+        if session_id not in self.sessions:
+            self.sessions[session_id] = ConversationMemory(max_history=10)
+        return self.sessions[session_id]
     
-    def normalize_query_with_context(self, user_query: str, username: str) -> str:
-        """
-        Chuẩn hóa câu hỏi bằng regex + datetime (không dùng AI)
-        1. Thay "tôi", "mình", "em" → username
-        2. Chuyển đổi các format ngày → YYYY-MM-DD
-        3. Thay "hôm qua", "hôm nay" → ngày cụ thể
-        """
+    def clear_session(self, session_id: str):
+        """Xóa lịch sử chat của session"""
+        if session_id in self.sessions:
+            self.sessions[session_id].clear()
+            return True
+        return False
+    
+    def normalize_query(self, user_query: str, username: str) -> str:
+        """Chuẩn hóa câu hỏi với context ngày tháng và username"""
         today = datetime.now()
         yesterday = today - timedelta(days=1)
         current_year = today.year
         
         normalized = user_query
         
-        # Bước 1: Thay đại từ nhân xưng → username
+        # Thay đại từ → username
         normalized = re.sub(r'\b(tôi|mình|em)\b', username, normalized, flags=re.IGNORECASE)
         
-        # Bước 2: Thay "hôm qua" → ngày cụ thể
+        # Thay thời gian tương đối
         normalized = re.sub(r'\bhôm qua\b', yesterday.strftime("%Y-%m-%d"), normalized, flags=re.IGNORECASE)
         normalized = re.sub(r'\bhôm nay\b', today.strftime("%Y-%m-%d"), normalized, flags=re.IGNORECASE)
         
-        # Bước 3: Chuyển đổi format ngày
-        # Pattern: dd/mm/yyyy hoặc dd/mm/yy
+        # Chuyển đổi format ngày dd/mm/yyyy → YYYY-MM-DD
         def replace_date_full(match):
-            day = int(match.group(1))
-            month = int(match.group(2))
-            year = int(match.group(3))
-            if year < 100:  # 2 chữ số năm
+            day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+            if year < 100:
                 year += 2000
             try:
-                date_obj = datetime(year, month, day)
-                return date_obj.strftime("%Y-%m-%d")
+                return datetime(year, month, day).strftime("%Y-%m-%d")
             except:
                 return match.group(0)
         
         normalized = re.sub(r'\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b', replace_date_full, normalized)
         
-        # Pattern: dd/mm (không có năm) → thêm năm hiện tại
+        # dd/mm → YYYY-MM-DD
         def replace_date_short(match):
-            day = int(match.group(1))
-            month = int(match.group(2))
+            day, month = int(match.group(1)), int(match.group(2))
             try:
-                date_obj = datetime(current_year, month, day)
-                return date_obj.strftime("%Y-%m-%d")
+                return datetime(current_year, month, day).strftime("%Y-%m-%d")
             except:
                 return match.group(0)
         
-        # Chỉ thay thế nếu chưa có format YYYY-MM-DD
         if not re.search(r'\d{4}-\d{2}-\d{2}', normalized):
             normalized = re.sub(r'\b(\d{1,2})/(\d{1,2})\b', replace_date_short, normalized)
         
-        # Pattern: "ngày X tháng Y" → YYYY-MM-DD
-        def replace_date_text(match):
-            day = int(match.group(1))
-            month = int(match.group(2))
-            year = int(match.group(3)) if match.group(3) else current_year
-            try:
-                date_obj = datetime(year, month, day)
-                return date_obj.strftime("%Y-%m-%d")
-            except:
-                return match.group(0)
-        
-        normalized = re.sub(
-            r'ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})(?:\s+năm\s+(\d{4}))?',
-            replace_date_text,
-            normalized,
-            flags=re.IGNORECASE
-        )
-        
-        # Log để debug
-        if normalized != user_query:
-            print(f"🔄 [NORMALIZE]")
-            print(f"   Input:  '{user_query}'")
-            print(f"   Output: '{normalized}'")
-        
         return normalized
     
-    def handle_action(self, username: str, user_query: str) -> dict:
-        """Xử lý khi user muốn thực hiện action (gọi MCP)"""
-        self.logger.log("Action Detected", f"Gọi MCP Server với message: {user_query}")
+    def analyze_intent_with_context(self, user_query: str, chat_history: str) -> dict:
+        """Phân tích ý định với context từ lịch sử chat"""
+        prompt = f"""
+Bạn là trợ lý phân tích ý định người dùng trong hệ thống quản lý báo cáo công việc.
+
+LỊCH SỬ HỘI THOẠI GẦN ĐÂY:
+{chat_history if chat_history else "Chưa có lịch sử"}
+
+TIN NHẮN MỚI: "{user_query}"
+
+Xác định ý định người dùng:
+1. "action" - Muốn TẠO MỚI/CẬP NHẬT dữ liệu (tạo report, sửa report, thêm task)
+2. "question" - Muốn TRA CỨU/HỎI thông tin (xem report, tóm tắt, hỏi làm gì)
+3. "clarification_needed" - Câu hỏi mơ hồ, cần hỏi lại để làm rõ
+4. "chitchat" - Chat thường, chào hỏi, cảm ơn
+
+QUAN TRỌNG:
+- Nếu user nói "cập nhật", "sửa", "thay đổi" → action
+- Nếu user nói "xem", "tóm tắt", "làm gì" → question
+- Nếu thiếu thông tin quan trọng (ngày, nội dung) → clarification_needed
+- Dựa vào lịch sử để hiểu ngữ cảnh (ví dụ: "nó" có thể là report đã nhắc trước)
+
+Trả về JSON:
+{{
+    "intent_type": "action | question | clarification_needed | chitchat",
+    "confidence": 0.0-1.0,
+    "reason": "giải thích ngắn gọn",
+    "missing_info": ["list các thông tin còn thiếu nếu có"]
+}}
+"""
         
-        mcp_response = mcp_client.ask_mcp(username=username, message=user_query)
+        response = generate_gemini_response(question=user_query, system_prompt=prompt)
+        
+        try:
+            import json
+            clean = response.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean)
+        except:
+            return {
+                "intent_type": "question",
+                "confidence": 0.5,
+                "reason": "Không phân tích được, mặc định là question"
+            }
+    
+    def handle_chitchat(self, user_query: str, chat_history: str) -> str:
+        """Xử lý chat thường, chào hỏi"""
+        prompt = f"""
+Bạn là tư vấn viên thân thiện đang chat với người dùng.
+
+LỊCH SỬ:
+{chat_history}
+
+NGƯỜI DÙNG: {user_query}
+
+Hãy trả lời tự nhiên, thân thiện. Nếu phù hợp, gợi ý họ có thể làm gì với hệ thống 
+(ví dụ: "Bạn muốn tôi giúp gì không? Tôi có thể giúp bạn xem báo cáo hoặc tạo báo cáo mới đấy!")
+"""
+        return generate_gemini_response(question=user_query, system_prompt=prompt)
+    
+    def handle_clarification(self, user_query: str, missing_info: List[str], chat_history: str) -> str:
+        """Xử lý khi cần làm rõ thông tin"""
+        prompt = f"""
+Người dùng nói: "{user_query}"
+
+Thông tin còn thiếu: {', '.join(missing_info)}
+
+LỊCH SỬ:
+{chat_history}
+
+Hãy hỏi lại một cách tự nhiên để làm rõ thông tin. 
+Ví dụ: 
+- Thiếu ngày → "Bạn muốn xem báo cáo ngày nào nhỉ? Hôm nay hay ngày cụ thể nào đó?"
+- Thiếu nội dung → "Bạn muốn cập nhật nội dung gì vào báo cáo?"
+"""
+        return generate_gemini_response(question=user_query, system_prompt=prompt)
+    
+    def handle_action(self, username: str, user_query: str, chat_history: str) -> dict:
+        """Xử lý action với context từ lịch sử"""
+        self.logger.log("Action Handler", f"Processing action for user: {username}")
+        
+        # Tạo context-aware message cho MCP
+        enhanced_query = f"""
+LỊCH SỬ HỘI THOẠI:
+{chat_history}
+
+YÊU CẦU MỚI: {user_query}
+
+Hãy xử lý yêu cầu trên dựa trên ngữ cảnh từ lịch sử (nếu có).
+"""
+        
+        mcp_response = mcp_client.ask_mcp(username=username, message=enhanced_query)
         
         if mcp_response.get("success"):
             result = mcp_response.get("result", {})
-            self.logger.log("MCP Response", str(result))
             
+            # Tạo câu trả lời thân thiện hơn
             if "message" in result:
-                final_answer = result["message"]
+                base_message = result["message"]
+                friendly_response = f"{base_message}\n\n💡 Bạn có cần tôi giúp gì thêm không?"
             elif "summary" in result:
-                final_answer = f"📊 Tóm tắt báo cáo:\n\n{result['summary']}"
+                friendly_response = f"📊 Đây là tóm tắt báo cáo của bạn:\n\n{result['summary']}\n\n✨ Bạn muốn xem chi tiết hơn không?"
             else:
-                final_answer = "✅ Đã thực hiện thành công yêu cầu của bạn."
+                friendly_response = "✅ Đã xong! Tôi có thể giúp gì thêm cho bạn không?"
             
             return {
-                "answer": final_answer,
+                "answer": friendly_response,
                 "logs": self.logger.get_logs(),
                 "mcp_result": result
             }
         else:
-            error_msg = mcp_response.get("error", "Lỗi không xác định từ MCP Server")
-            self.logger.log("MCP Error", error_msg)
+            error_msg = mcp_response.get("error", "Có lỗi xảy ra")
             return {
-                "answer": f"❌ {error_msg}",
+                "answer": f"❌ Xin lỗi, {error_msg}. Bạn có thể thử lại hoặc diễn đạt khác được không?",
                 "logs": self.logger.get_logs()
             }
     
-    def handle_question(self, user_query: str, username: str, top_k: int = 10) -> dict:
-        """Xử lý khi user hỏi thông tin (search + answer)"""
+    def handle_question(self, user_query: str, username: str, chat_history: str, top_k: int = 10) -> dict:
+        """Xử lý câu hỏi với context"""
         
-        # Chuẩn hóa câu hỏi với username
-        search_query = self.normalize_query_with_context(user_query, username)
-        
-        # ✅ SỬA: Bỏ planning step - LLM không cần plan, chỉ cần search và answer
+        # Chuẩn hóa query
+        search_query = self.normalize_query(user_query, username)
         self.logger.log("Search Query", search_query)
         
-        # Search reports trong Pinecone với query đã chuẩn hóa
+        # Search với context từ lịch sử
         matches = Tools.search_reports(search_query, top_k=top_k)
         self.logger.log("Search Results", f"Tìm thấy {len(matches)} kết quả")
         
-        # Gom context từ kết quả search
+        # Tạo context từ search results
         if matches:
             context_parts = []
             for m in matches:
                 text = m.get("metadata", {}).get("text", "")
-                context_parts.append(text)
+                score = m.get("score", 0)
+                context_parts.append(f"[Độ liên quan: {score:.2f}]\n{text}")
             context = "\n\n---\n\n".join(context_parts)
         else:
             context = ""
         
-        # ✅ PROMPT MỚI: Bắt buộc chỉ dùng context
+        # Tạo prompt với lịch sử chat
         answer_prompt = f"""
-Bạn là trợ lý AI trả lời câu hỏi về báo cáo công việc.
+{ADVISOR_SYSTEM_PROMPT}
 
-QUY TẮC BẮT BUỘC:
-1. CHỈ sử dụng thông tin có trong CONTEXT bên dưới
-2. KHÔNG tự bịa hoặc suy đoán thông tin
-3. Nếu context KHÔNG có thông tin cần thiết → Trả lời: "Không tìm thấy thông tin về [vấn đề] trong các báo cáo."
-4. Khi trả lời, trích xuất CHÍNH XÁC từ context (tên người, ngày, công việc)
+LỊCH SỬ HỘI THOẠI:
+{chat_history}
 
-CONTEXT TỪ DATABASE:
-{context if context else "Không có dữ liệu liên quan."}
+DỮ LIỆU TÌM ĐƯỢC:
+{context if context else "Không tìm thấy dữ liệu liên quan."}
 
-CÂU HỎI: {user_query}
+CÂU HỎI MỚI: {user_query}
 
-HÃY TRẢ LỜI:
-- Nếu có thông tin trong context → Tóm tắt rõ ràng
-- Nếu không có thông tin → Nói rõ không tìm thấy
+HƯỚNG DẪN TRẢ LỜI:
+1. Nếu có dữ liệu → Trả lời chi tiết, tham chiếu đến lịch sử nếu liên quan
+2. Nếu không có dữ liệu → Nói rõ và gợi ý:
+   - "Tôi chưa thấy báo cáo nào về [vấn đề] của bạn. Bạn có muốn tạo báo cáo mới không?"
+   - "Có vẻ như chưa có dữ liệu cho ngày này. Tôi có thể giúp bạn tạo không?"
+3. Kết thúc bằng câu hỏi hoặc gợi ý phù hợp
+4. Sử dụng emoji tự nhiên (không quá nhiều)
+
+Hãy trả lời như một người tư vấn viên thân thiện!
 """
         
-        # Gọi LLM để ra câu trả lời cuối cùng
         final_answer = generate_gemini_response(
             question=user_query,
             context=context,
@@ -230,41 +327,76 @@ HÃY TRẢ LỜI:
             "logs": self.logger.get_logs()
         }
     
-    def run(self, user_query: str, username: str, top_k: int = 10) -> dict:
+    def run(self, user_query: str, username: str, session_id: str, top_k: int = 10) -> dict:
         """
-        Main entry point của Agent
+        Main entry point với memory
         
         Args:
-            user_query: Câu hỏi/yêu cầu từ user
-            username: Tên user đang đăng nhập (BẮT BUỘC)
+            user_query: Câu hỏi/yêu cầu
+            username: Tên user đăng nhập
+            session_id: ID phiên chat (dùng user_id hoặc unique identifier)
             top_k: Số kết quả search
         """
         print(f"\n{'='*120}")
-        print(f"🔍 [Agent.run] NEW REQUEST")
+        print(f"💬 [Conversational Agent] NEW MESSAGE")
+        print(f"   - Session: {session_id}")
         print(f"   - User: {username}")
         print(f"   - Query: {user_query}")
         print(f"{'='*120}\n")
         
-        # Kiểm tra username
-        if not username:
-            return {
-                "answer": "❌ Lỗi: Không xác định được user. Vui lòng đăng nhập lại.",
-                "logs": self.logger.get_logs()
-            }
+        # Lấy hoặc tạo session
+        memory = self.get_or_create_session(session_id)
         
-        # Bước 1: Phân tích intent
-        intent = self.analyze_intent(user_query)
+        # Lưu tin nhắn user
+        memory.add_user_message(user_query)
+        
+        # Lấy context từ lịch sử
+        chat_history = memory.get_context_string()
+        
+        # Xử lý lệnh đặc biệt
+        if user_query.strip().lower() in ["clear", "xóa lịch sử", "bắt đầu lại"]:
+            self.clear_session(session_id)
+            response = "🔄 Đã xóa lịch sử chat. Chúng ta bắt đầu lại nhé! Tôi có thể giúp gì cho bạn?"
+            memory.add_assistant_message(response)
+            return {"answer": response, "logs": self.logger.get_logs()}
+        
+        # Phân tích intent với context
+        intent = self.analyze_intent_with_context(user_query, chat_history)
         intent_type = intent.get("intent_type", "question")
-        reason = intent.get("reason", "")
+        confidence = intent.get("confidence", 0.5)
+        missing_info = intent.get("missing_info", [])
         
-        self.logger.log("Intent Analysis", f"Type: {intent_type} - Reason: {reason}")
-        print(f"📊 Intent Type: {intent_type}")
-        print(f"💡 Reason: {reason}\n")
+        self.logger.log("Intent Analysis", f"Type: {intent_type} (confidence: {confidence})")
+        print(f"🎯 Intent: {intent_type} ({confidence:.0%})")
+        print(f"💭 Reason: {intent.get('reason', '')}\n")
         
-        # Bước 2: Xử lý theo intent
-        if intent_type == "action":
-            print(f"🎬 Handling ACTION for user: {username}\n")
-            return self.handle_action(username, user_query)
-        else:
-            print(f"❓ Handling QUESTION for user: {username}\n")
-            return self.handle_question(user_query, username, top_k)
+        # Xử lý theo intent
+        if intent_type == "chitchat":
+            answer = self.handle_chitchat(user_query, chat_history)
+            result = {"answer": answer, "logs": self.logger.get_logs()}
+        
+        elif intent_type == "clarification_needed":
+            answer = self.handle_clarification(user_query, missing_info, chat_history)
+            result = {"answer": answer, "logs": self.logger.get_logs()}
+        
+        elif intent_type == "action":
+            result = self.handle_action(username, user_query, chat_history)
+        
+        else:  # question
+            result = self.handle_question(user_query, username, chat_history, top_k)
+        
+        # Lưu câu trả lời vào memory
+        memory.add_assistant_message(result["answer"])
+        
+        # Thêm thông tin session vào response
+        result["session_info"] = {
+            "session_id": session_id,
+            "message_count": len(memory.messages),
+            "summary": memory.get_summary()
+        }
+        
+        return result
+
+
+# Singleton instance
+conversational_agent = ConversationalAgent()
