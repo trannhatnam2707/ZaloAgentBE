@@ -59,7 +59,7 @@ class ConversationalAgent:
                 }
             },
             "update_report": {
-                "required": ["yesterday", "today"],
+                "required": ["yesterday", "today"], # <<< THAY ĐỔI: Chỉ yêu cầu nội dung, vì ngày và ID đã có
                 "questions": {
                     "yesterday": "Bạn muốn cập nhật nội dung công việc hôm qua thành gì?",
                     "today": "Và nội dung công việc hôm nay cần cập nhật là gì?"
@@ -80,17 +80,10 @@ class ConversationalAgent:
 
     def analyze_intent_and_entities(self, user_query: str, chat_history: str, username: str) -> dict:
         prompt = f"""
-        Phân tích yêu cầu mới của người dùng '{username}' là "{user_query}" dựa trên lịch sử hội thoại.
-        LỊCH SỬ: {chat_history}
-        
-        Trả về một JSON object DUY NHẤT với các trường:
-        - "intent": (Bắt buộc) Một trong các giá trị: "create_report", "update_report", "search_report", "chitchat", "provide_info", "confirm_yes", "confirm_no", "cancel_action".
-        - "entities": (Bắt buộc) Một JSON object chứa các thông tin được trích xuất. Ví dụ: {{"date": "hôm qua", "yesterday": "làm task A"}}. Nếu không có, trả về object rỗng {{}}.
-        
-        VÍ DỤ:
-        - Yêu cầu: "cập nhật report hôm qua" -> {{"intent": "update_report", "entities": {{"date": "hôm qua"}}}}
-        - Yêu cầu: "nội dung hôm qua là ở nhà" -> {{"intent": "provide_info", "entities": {{"yesterday": "ở nhà"}}}}
-        - Yêu cầu: "thôi hủy đi" -> {{"intent": "cancel_action", "entities": {{}}}}
+        Phân tích yêu cầu mới của người dùng '{username}' là "{user_query}" dựa trên lịch sử:
+        {chat_history}
+        Trả về JSON với intent: "create_report", "update_report", "search_report", "chitchat", "provide_info", "confirm_yes", "confirm_no", "cancel_action".
+        - Nếu người dùng muốn dừng lại/hủy bỏ -> intent là "cancel_action".
         """
         response = generate_gemini_response(question=user_query, system_prompt=prompt)
         try:
@@ -121,21 +114,56 @@ class ConversationalAgent:
             memory.clear_action_context()
             final_result = {"answer": "Dạ vâng, đã hủy thao tác. Bạn cần tôi giúp gì khác không ạ?"}
         else:
-            # === LOGIC MỚI: Xử lý `entities` an toàn ===
-            if entities and isinstance(entities, dict):
-                memory.action_context.update(entities)
-            
+            if entities: memory.action_context.update(entities)
             current_action = memory.action_context.get("intent")
             if not current_action and intent in self.tool_schemas:
                 current_action = intent
                 memory.action_context["intent"] = current_action
 
-            # === LOGIC CHO UPDATE_REPORT ===
+            # === LOGIC MỚI CHO UPDATE_REPORT ===
             if current_action == 'update_report':
-                final_result = self._handle_update_report_flow(username, intent, memory)
+                # Giai đoạn 1: Tìm và xác nhận report
+                if 'report_id' not in memory.action_context:
+                    # Nếu đang chờ xác nhận
+                    if 'found_report_for_confirmation' in memory.action_context:
+                        if intent == "confirm_yes":
+                            confirmed_report = memory.action_context.pop('found_report_for_confirmation')
+                            memory.action_context['report_id'] = confirmed_report['id']
+                            # Hỏi câu hỏi tiếp theo ngay lập tức
+                            next_question = self.tool_schemas['update_report']['questions']['yesterday']
+                            final_result = {"answer": next_question}
+                        else: # confirm_no hoặc hủy
+                            memory.clear_action_context()
+                            final_result = {"answer": "Dạ vâng. Khi nào cần, bạn cứ gọi nhé."}
+                    # Nếu chưa tìm, thì bắt đầu tìm
+                    else:
+                        if 'date' not in memory.action_context:
+                            final_result = {"answer": "Chắc chắn rồi ạ. Bạn muốn cập nhật báo cáo của ngày nào thế?"}
+                        else:
+                            search_date_str = memory.action_context['date']
+                            normalized_date = self._normalize_date(search_date_str)
+                            if not normalized_date:
+                                final_result = {"answer": "Xin lỗi, tôi chưa hiểu rõ ngày bạn cung cấp. Bạn có thể nói rõ hơn không, ví dụ: 'hôm qua' hoặc '17/10'?"}
+                                memory.action_context.pop('date', None)
+                            else:
+                                matches = Tools.search_reports(query=f"báo cáo của {username} ngày {normalized_date}", top_k=1, date_filter=normalized_date)
+                                if matches:
+                                    found_report = matches[0]['metadata']
+                                    report_id = matches[0]['id']
+                                    memory.action_context['found_report_for_confirmation'] = {'id': report_id, 'text': found_report['text']}
+                                    answer = f"Tôi tìm thấy báo cáo ngày {normalized_date}:\n\n> {found_report['text']}\n\n**Đây có phải báo cáo bạn muốn cập nhật không ạ?**"
+                                    final_result = {"answer": answer}
+                                else:
+                                    memory.clear_action_context()
+                                    final_result = {"answer": f"Rất tiếc, tôi không tìm thấy báo cáo nào của bạn vào ngày {normalized_date}."}
+                # Giai đoạn 2: Thu thập thông tin và thực thi
+                else:
+                    final_result = self._handle_action_execution(username, memory)
+            
             # === Xử lý các action khác ===
             elif current_action in self.tool_schemas:
                 final_result = self._handle_action_execution(username, memory)
+            
             elif intent == "search_report":
                 final_result = self.handle_question(user_query, username, chat_history, top_k)
             else: # chitchat
@@ -146,44 +174,12 @@ class ConversationalAgent:
         final_result["session_info"] = {"session_id": session_id, "message_count": len(memory.messages), "summary": memory.get_summary()}
         return final_result
 
-    def _handle_update_report_flow(self, username: str, intent: str, memory: ConversationMemory) -> dict:
-        # Giai đoạn 1: Tìm và xác nhận report
-        if 'report_id' not in memory.action_context:
-            if 'found_report_for_confirmation' in memory.action_context:
-                if intent == "confirm_yes":
-                    confirmed_report = memory.action_context.pop('found_report_for_confirmation')
-                    memory.action_context['report_id'] = confirmed_report['id']
-                    return {"answer": self.tool_schemas['update_report']['questions']['yesterday']}
-                else: # confirm_no hoặc hủy
-                    memory.clear_action_context()
-                    return {"answer": "Dạ vâng. Khi nào cần, bạn cứ gọi nhé."}
-            else:
-                if 'date' not in memory.action_context:
-                    return {"answer": "Chắc chắn rồi ạ. Bạn muốn cập nhật báo cáo của ngày nào thế?"}
-                else:
-                    search_date_str = memory.action_context['date']
-                    normalized_date = self._normalize_date(search_date_str)
-                    if not normalized_date:
-                        memory.action_context.pop('date', None)
-                        return {"answer": "Xin lỗi, tôi chưa hiểu rõ ngày bạn cung cấp. Bạn có thể nói rõ hơn không, ví dụ: 'hôm qua' hoặc '17/10'?"}
-                    else:
-                        matches = Tools.search_reports(query=f"báo cáo của {username} ngày {normalized_date}", top_k=1, date_filter=normalized_date)
-                        if matches:
-                            report = matches[0]
-                            memory.action_context['found_report_for_confirmation'] = {'id': report['id'], 'text': report['metadata']['text']}
-                            return {"answer": f"Tôi tìm thấy báo cáo ngày {normalized_date}:\n\n> {report['metadata']['text']}\n\n**Đây có phải báo cáo bạn muốn cập nhật không ạ?**"}
-                        else:
-                            memory.clear_action_context()
-                            return {"answer": f"Rất tiếc, tôi không tìm thấy báo cáo nào của bạn vào ngày {normalized_date}."}
-        # Giai đoạn 2: Thu thập thông tin và thực thi
-        else:
-            return self._handle_action_execution(username, memory)
-
     def _handle_action_execution(self, username: str, memory: ConversationMemory) -> dict:
         current_action = memory.action_context.get("intent")
         schema = self.tool_schemas[current_action]
         
         required_params = schema["required"]
+        # Thêm 'report_id' vào các tham số cần có để gửi đi cho action 'update_report'
         if current_action == 'update_report':
             required_params = ['report_id'] + required_params
             
@@ -193,6 +189,11 @@ class ConversationalAgent:
             try:
                 params = memory.action_context.copy()
                 action = params.pop("intent")
+                # Đảm bảo có date trong params cho update
+                if action == 'update_report' and 'date' not in params:
+                    # Lấy date từ report đã tìm thấy nếu không có
+                    pass # Cần logic để lấy lại date nếu cần thiết
+                    
                 mcp_msg = f"Thực hiện '{action}' cho '{username}' với dữ liệu: {json.dumps(params)}"
                 res = mcp_client.ask_mcp(username=username, message=mcp_msg)
                 answer = "✅ Xong! Cần tôi giúp gì thêm không?" if res.get("success") else f"❌ Lỗi: {res.get('error', 'Không rõ')}"
@@ -201,8 +202,14 @@ class ConversationalAgent:
                 result = {"answer": f"❌ Lỗi nghiêm trọng khi gọi MCP: {e}"}
             memory.clear_action_context()
         else:
-            next_param = missing_params[0]
-            result = {"answer": schema["questions"].get(next_param, f"Bạn vui lòng cung cấp {next_param} nhé.")}
+            next_param_to_ask = missing_params[0]
+            # Sửa lỗi key 'date' không tồn tại trong questions của update_report
+            if next_param_to_ask in schema['questions']:
+                result = {"answer": schema["questions"][next_param_to_ask]}
+            else:
+                # Fallback an toàn
+                result = {"answer": f"Bạn vui lòng cung cấp thông tin cho {next_param_to_ask} nhé."}
+
         return result
 
     def _normalize_date(self, date_str: str) -> str | None:
@@ -210,7 +217,8 @@ class ConversationalAgent:
             if 'hôm nay' in date_str.lower(): return datetime.now().strftime("%Y-%m-%d")
             if 'hôm qua' in date_str.lower(): return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
             day, month, *year = map(int, re.split(r'[/.-]', date_str))
-            return datetime(year[0] if year else datetime.now().year, month, day).strftime("%Y-%m-%d")
+            report_year = year[0] if year else datetime.now().year
+            return datetime(report_year, month, day).strftime("%Y-%m-%d")
         except Exception:
             return None
 
