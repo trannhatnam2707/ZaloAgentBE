@@ -321,7 +321,7 @@ Hãy trả lời như một người tư vấn viên thân thiện!
         )
         
         self.logger.log("Final Answer", final_answer)
-        
+            
         return {
             "answer": final_answer,
             "logs": self.logger.get_logs()

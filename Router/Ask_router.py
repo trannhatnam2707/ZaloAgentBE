@@ -9,7 +9,7 @@ class AskRequest(BaseModel):
     question: str
     username: str
     session_id: str = None
-    top_k: int = 10
+    top_k: int = 50
 
 class ClearHistoryRequest(BaseModel):
     session_id: str

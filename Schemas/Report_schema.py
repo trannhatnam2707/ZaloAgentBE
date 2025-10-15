@@ -15,7 +15,7 @@ class ReportCreate(ReportBase):
 class ReportUpdate(BaseModel):
     date: Optional[str] = None  
     yesterday: Optional[str] = None 
-    today: Optional[str] = None
+    today: Optional[str] = None 
 
 class ReportResponse(ReportBase):
     id: str
