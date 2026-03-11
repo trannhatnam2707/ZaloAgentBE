@@ -16,23 +16,30 @@ Bạn đang trò chuyện với người dùng tên là {username}. Hãy xưng h
 """
 
 class ConversationMemory:
-    # ... (Nội dung lớp này giữ nguyên, không thay đổi)
     def __init__(self, max_history: int = 10):
         self.messages: List[Dict] = []
         self.max_history = max_history
         self.action_context: Dict[str, Any] = {}
+    
     def add_message(self, role: str, content: str):
         self.messages.append({"role": role, "content": content, "timestamp": datetime.now().isoformat()})
         self._trim_history()
+    
     def _trim_history(self):
-        if len(self.messages) > self.max_history * 2: self.messages = self.messages[-(self.max_history * 2):]
+        if len(self.messages) > self.max_history * 2: 
+            self.messages = self.messages[-(self.max_history * 2):]
+    
     def get_context_string(self) -> str:
         if not self.messages: return "Chưa có cuộc trò chuyện nào."
         return "\n".join([f"{'Người dùng' if msg['role'] == 'user' else 'Tư vấn viên'}: {msg['content']}" for msg in self.messages[-6:]])
+    
     def clear(self):
         self.messages = []
         self.clear_action_context()
-    def clear_action_context(self): self.action_context = {}
+    
+    def clear_action_context(self): 
+        self.action_context = {}
+    
     def get_summary(self) -> str:
         if not self.messages: return "Chưa có cuộc trò chuyện nào."
         user_messages = [m['content'] for m in self.messages if m['role'] == 'user']
@@ -51,8 +58,14 @@ class ConversationalAgent:
                     "yesterday": "Okie. Nội dung công việc anh đã làm hôm qua là gì?",
                     "today": "Và cuối cùng, nội dung công việc hôm nay của anh là gì?"
                 }
+            },
+            "update_report": {
+                "required": ["date", "update_request"],
+                "questions": {
+                    "date": "Được rồi ạ! Anh muốn cập nhật báo cáo ngày nào?",
+                    "update_request": "Anh muốn cập nhật gì cho báo cáo này? (Ví dụ: thêm task mới, sửa nội dung hôm qua/hôm nay, đổi ngày...)"
+                }
             }
-            # Search không cần schema ở đây vì nó là tác vụ 1 bước
         }
 
     def get_or_create_session(self, session_id: str) -> ConversationMemory:
@@ -68,11 +81,10 @@ class ConversationalAgent:
 
     def _get_missing_param(self, action: Optional[str], memory: ConversationMemory) -> Optional[str]:
         """Xác định tham số còn thiếu cho một action."""
-        if action == "create_report":
-            required = self.tool_schemas['create_report'].get('required', [])
-            # Lấy các tham số đã có trong context
-            payload = memory.action_context.get('create_payload', {})
-            missing = [p for p in required if p not in payload]
+        if action in self.tool_schemas:
+            required = self.tool_schemas[action].get('required', [])
+            payload = memory.action_context.get('update_payload' if action == 'update_report' else 'create_payload', {})
+            missing = [p for p in required if p not in payload or not payload[p]]
             return missing[0] if missing else None
         return None
         
@@ -81,45 +93,103 @@ class ConversationalAgent:
         current_action: Optional[str] = None, missing_param: Optional[str] = None
     ) -> dict:
         """
-        🎯 Phân tích intent CÓ NHẬN THỨC BỐI CẢNH (Stateful)
+        🎯 Phân tích intent CÓ NHẬN THỨC BỐI CẢNH (Stateful) - FIXED VERSION
+        
+        QUAN TRỌNG: 
+        - Nếu đang có current_action và missing_param → ƯU TIÊN trích xuất thông tin cho missing_param
+        - CHỈ phân tích intent mới khi KHÔNG có context
         """
-        context_prompt = ""
-        # Nếu đang trong một quy trình và chờ tham số, ưu tiên trích xuất tham số đó
+        
+        # 🔴 CRITICAL: Nếu đang trong quy trình, BUỘC phải là provide_info trừ khi user muốn hủy
         if current_action and missing_param:
-            context_prompt = f"""Bối cảnh: Agent đang thực hiện quy trình '{current_action}' và đang chờ người dùng cung cấp thông tin cho tham số '{missing_param}'.
-Nhiệm vụ chính: Phân tích câu trả lời của người dùng "{user_query}" để trích xuất giá trị cho tham số '{missing_param}'.
-⚠️ QUAN TRỌNG: Nếu câu trả lời có NHIỀU thông tin (ví dụ: cả yesterday VÀ today), hãy trích xuất TẤT CẢ vào create_payload.
-Nếu người dùng trả lời không liên quan hoặc muốn hủy, hãy xác định intent phù hợp.
+            # Kiểm tra xem user có muốn hủy không
+            cancel_keywords = ['hủy', 'thôi', 'dừng', 'cancel', 'không', 'bỏ']
+            if any(keyword in user_query.lower() for keyword in cancel_keywords):
+                return {"intent": "cancel_action", "entities": {}}
+            
+            # Xác định payload key
+            payload_key = "update_payload" if current_action == "update_report" else "create_payload"
+            
+            # Trích xuất thông tin TRỰC TIẾP cho missing_param
+            context_prompt = f"""
+🎯 NHIỆM VỤ CHÍNH: Trích xuất TẤT CẢ thông tin từ câu trả lời của người dùng.
+
+Bối cảnh:
+- Đang thực hiện: {current_action}
+- Đang chờ thông tin chính: {missing_param}
+- Câu trả lời: "{user_query}"
+
+⚠️ QUY TẮC QUAN TRỌNG:
+1. Intent BUỘC PHẢI là "provide_info" (trừ khi user muốn hủy)
+2. **TRÍCH XUẤT TẤT CẢ thông tin có trong câu, KHÔNG CHỈ {missing_param}**
+3. Nếu user cung cấp NHIỀU thông tin cùng lúc → trích xuất HẾT TẤT CẢ
+4. Nhận diện các từ khóa: "yesterday"/"hôm qua", "today"/"hôm nay", ngày tháng
+
+Ví dụ quan trọng:
+- Missing: "yesterday", User: "hôm qua tôi làm A, hôm nay tôi làm B" 
+  → {{"intent": "provide_info", "entities": {{"create_payload": {{"yesterday": "làm A", "today": "làm B"}}}}}}
+  ⚠️ PHẢI LẤY CẢ HAI, không chỉ yesterday!
+  
+- Missing: "yesterday", User: "yesterday làm docs và today làm code"
+  → {{"intent": "provide_info", "entities": {{"create_payload": {{"yesterday": "làm docs", "today": "làm code"}}}}}}
+
+- Missing: "update_request", User: "yesterday đi ăn" 
+  → {{"intent": "provide_info", "entities": {{"update_payload": {{"update_request": "sửa yesterday thành 'đi ăn'"}}}}}}
+  
+- Missing: "today", User: "hôm nay đi họp và code"
+  → {{"intent": "provide_info", "entities": {{"create_payload": {{"today": "đi họp và code"}}}}}}
+
+Chỉ trả về JSON với format:
+{{
+    "intent": "provide_info",
+    "entities": {{
+        "{payload_key}": {{
+            // Trích xuất TẤT CẢ fields có trong câu, không chỉ {missing_param}
+        }}
+    }}
+}}
 """
         else:
-            context_prompt = f"Nhiệm vụ: Phân tích yêu cầu mới của người dùng '{username}' là \"{user_query}\"."
+            # Phân tích intent mới (không có context)
+            context_prompt = f"""
+🎯 NHIỆM VỤ: Phân tích yêu cầu MỚI của người dùng '{username}'.
 
-        prompt = f"""
-        {context_prompt}
-        1. **Intent**: Xác định một trong các intent: `create_report`, `search_report`, `provide_info`, `cancel_action`, `chitchat`.
-           - Nếu người dùng cung cấp thông tin cho tham số đang thiếu, intent là `provide_info`.
-           - Nếu người dùng muốn dừng, hủy, thôi -> intent là `cancel_action`.
-           
-        2. **Entities**: Trích xuất thông tin. Key BẮT BUỘC là `create_payload`.
-           - ⚠️ QUAN TRỌNG: Phải trích xuất TẤT CẢ thông tin có trong câu. Nếu câu có cả "yesterday" và "today", phải trả về CẢ HAI.
-           - Ví dụ: "hôm qua tôi đi đà nẵng, hôm nay tôi đi hội an" 
-             → {{"create_payload": {{"yesterday": "đi đà nẵng", "today": "đi hội an"}}}}
-           - Ví dụ: nếu `missing_param` là 'yesterday' và người dùng nói "hôm qua tôi đi ăn cưới"
-             → {{"create_payload": {{"yesterday": "đi ăn cưới"}}}}
-           - Ví dụ: nếu `missing_param` là 'date' và người dùng nói "ngày 20/10"
-             → {{"create_payload": {{"date": "20/10"}}}}
+Câu hỏi: "{user_query}"
 
-        Chỉ trả về JSON.
-        """
-        response = generate_gemini_response(question=user_query, system_prompt=prompt)
+Xác định intent:
+- `create_report`: Tạo báo cáo mới (từ khóa: tạo, create, viết report mới)
+- `update_report`: Sửa/cập nhật báo cáo đã có (từ khóa: sửa, update, cập nhật, thay đổi, chỉnh)
+- `search_report`: Tìm kiếm (từ khóa: tìm, search, xem, báo cáo nào)
+- `chitchat`: Trò chuyện thường
+
+Trích xuất entities tương ứng:
+- Với CREATE: {{"create_payload": {{"date": "...", "yesterday": "...", "today": "..."}}}}
+- Với UPDATE: {{"update_payload": {{"date": "...", "update_request": "..."}}}}
+
+Ví dụ:
+- "Tạo report hôm nay" → {{"intent": "create_report", "entities": {{"create_payload": {{"date": "hôm nay"}}}}}}
+- "Cập nhật báo cáo ngày 15/10" → {{"intent": "update_report", "entities": {{"update_payload": {{"date": "15/10"}}}}}}
+- "Sửa report hôm qua, thêm task X" → {{"intent": "update_report", "entities": {{"update_payload": {{"date": "hôm qua", "update_request": "thêm task X"}}}}}}
+
+Chỉ trả về JSON.
+"""
+
+        response = generate_gemini_response(question=user_query, system_prompt=context_prompt)
         try:
             clean_response = response.replace("```json", "").replace("```", "").strip()
-            return json.loads(clean_response)
+            parsed = json.loads(clean_response)
+            
+            # 🛡️ SAFETY: Đảm bảo intent luôn là provide_info nếu đang có context
+            if current_action and missing_param and parsed.get("intent") not in ["cancel_action"]:
+                parsed["intent"] = "provide_info"
+            
+            return parsed
         except Exception as e:
             self.logger.log("PARSE_ERROR", f"Lỗi parse JSON: {e} | Response: {response}")
-            # Fallback an toàn: Nếu đang chờ tham số, giả định người dùng đã cung cấp nó
+            # Fallback an toàn
             if missing_param:
-                return {"intent": "provide_info", "entities": {"create_payload": {missing_param: user_query}}}
+                payload_key = "update_payload" if current_action == "update_report" else "create_payload"
+                return {"intent": "provide_info", "entities": {payload_key: {missing_param: user_query}}}
             return {"intent": "chitchat", "entities": {}}
             
     def _normalize_date(self, date_str: str) -> Optional[str]:
@@ -139,14 +209,13 @@ Nếu người dùng trả lời không liên quan hoặc muốn hủy, hãy xá
         missing_param = self._get_missing_param("create_report", memory)
         
         if not missing_param:
-            # Đã đủ thông tin, thực thi
             payload = memory.action_context.get("create_payload", {})
             
             # Validate và chuẩn hóa ngày
             date_to_normalize = payload.get("date")
             normalized_date = self._normalize_date(date_to_normalize)
             if not normalized_date:
-                memory.action_context.get("create_payload", {}).pop("date", None) # Xóa ngày không hợp lệ
+                memory.action_context.get("create_payload", {}).pop("date", None)
                 return {"answer": f"Ngày '{date_to_normalize}' không hợp lệ. Anh vui lòng cung cấp lại ngày báo cáo nhé."}
             
             payload["date"] = normalized_date
@@ -162,8 +231,38 @@ Nếu người dùng trả lời không liên quan hoặc muốn hủy, hãy xá
             memory.clear_action_context()
             return {"answer": answer}
         else:
-            # Vẫn thiếu thông tin, hỏi câu hỏi tiếp theo
             question = self.tool_schemas["create_report"]["questions"].get(missing_param)
+            return {"answer": question}
+
+    def _handle_update_report(self, username: str, memory: ConversationMemory) -> dict:
+        """🔄 Xử lý quy trình cập nhật báo cáo (Stateful)."""
+        missing_param = self._get_missing_param("update_report", memory)
+        
+        if not missing_param:
+            payload = memory.action_context.get("update_payload", {})
+            
+            # Validate và chuẩn hóa ngày
+            date_to_normalize = payload.get("date")
+            normalized_date = self._normalize_date(date_to_normalize)
+            if not normalized_date:
+                memory.action_context.get("update_payload", {}).pop("date", None)
+                return {"answer": f"Ngày '{date_to_normalize}' không hợp lệ. Anh vui lòng cung cấp lại ngày cần cập nhật nhé."}
+            
+            payload["date"] = normalized_date
+            
+            try:
+                # Gọi MCP với action update
+                mcp_msg = f"Thực hiện 'update_report' cho '{username}' với dữ liệu: {json.dumps(payload)}"
+                res = mcp_client.ask_mcp(username=username, message=mcp_msg)
+                answer = "✅ Đã cập nhật báo cáo thành công! Cần em giúp gì thêm không ạ?" if res.get("success") else f"❌ Lỗi: {res.get('error', 'Không rõ')}"
+            except Exception as e:
+                self.logger.log("UPDATE_ERROR", f"Lỗi gọi MCP: {e}")
+                answer = f"❌ Lỗi nghiêm trọng khi cập nhật: {e}"
+            
+            memory.clear_action_context()
+            return {"answer": answer}
+        else:
+            question = self.tool_schemas["update_report"]["questions"].get(missing_param)
             return {"answer": question}
 
     def _handle_search_report(self, username: str, user_query: str, top_k: int) -> dict:
@@ -196,6 +295,12 @@ Hãy trả lời câu hỏi của người dùng một cách tự nhiên và th�
         current_action = memory.action_context.get("intent")
         missing_param = self._get_missing_param(current_action, memory)
 
+        # 🔴 DEBUG LOG
+        print(f"🔍 BEFORE ANALYSIS:")
+        print(f"   - current_action: {current_action}")
+        print(f"   - missing_param: {missing_param}")
+        print(f"   - action_context: {memory.action_context}")
+
         analysis = self.analyze_intent_and_entities(user_query, username, current_action, missing_param)
         intent = analysis.get("intent", "chitchat")
         entities = analysis.get("entities", {})
@@ -207,18 +312,27 @@ Hãy trả lời câu hỏi của người dùng một cách tự nhiên và th�
             memory.clear_action_context()
             final_result = {"answer": "Dạ vâng, em đã hủy thao tác. Anh cần em giúp gì khác không ạ?"}
         else:
-            # Cập nhật context
+            # Cập nhật context với key phù hợp
             if "create_payload" in entities:
                 memory.action_context.setdefault("create_payload", {}).update(entities["create_payload"])
+            if "update_payload" in entities:
+                memory.action_context.setdefault("update_payload", {}).update(entities["update_payload"])
 
             # Bắt đầu action mới nếu chưa có
             if not current_action and intent in self.tool_schemas:
                 memory.action_context["intent"] = intent
                 current_action = intent
+            
+            # 🔴 DEBUG LOG
+            print(f"🔍 AFTER UPDATE:")
+            print(f"   - current_action: {current_action}")
+            print(f"   - action_context: {memory.action_context}")
 
             # Router chính
             if current_action == "create_report":
                 final_result = self._handle_create_report(username, memory)
+            elif current_action == "update_report":
+                final_result = self._handle_update_report(username, memory)
             elif intent == "search_report":
                 final_result = self._handle_search_report(username, user_query, top_k)
             else:

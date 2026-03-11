@@ -1,5 +1,3 @@
-# File: MCP_Server/ToolsMCP.py
-
 import json
 import os
 from datetime import datetime
