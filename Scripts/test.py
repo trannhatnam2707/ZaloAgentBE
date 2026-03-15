@@ -6,9 +6,9 @@ reports_collection = get_mongo_collection("Report")
 
 # Tìm report ngày 20/8
 report_20_8 = reports_collection.find_one({"date": {"$regex": "2025-08-20|2024-08-20|20/08"}})
-
+    
 if report_20_8:
-    print(f"✅ Tìm thấy report ngày 20/8 trong MongoDB:")
+    print(f"Tìm thấy report ngày 20/8 trong MongoDB:")
     print(f"   - ID: {report_20_8['_id']}")
     print(f"   - Date: {report_20_8.get('date')}")
     print(f"   - Yesterday: {report_20_8.get('yesterday', '')[:50]}...")

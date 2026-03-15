@@ -7,7 +7,9 @@ mcp
 fastmcp
 pydantic
 typing-extensions
-
+passlib
+python-jose
+python-multipart
 
 # & f:/AGENTZALO/agentzalo_env/Scripts/Activate.ps1
 # uvicorn Main:app --host 0.0.0.0 --port 8000 --reload

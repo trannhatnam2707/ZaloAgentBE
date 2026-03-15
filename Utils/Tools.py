@@ -1,4 +1,4 @@
-# File: Utils/Tools.py
+# File: Utils/Tools.py (RAG)
 
 from Database.Pinecone import search_pinecone
 from Utils.Embedding import get_embedding

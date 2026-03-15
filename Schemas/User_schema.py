@@ -1,20 +1,17 @@
 from pydantic import BaseModel
+from pydantic import Field
 
 
 class UserBase(BaseModel):
-    username: str
+    username: str = Field(..., description="Tên người dùng")
    
 class UserCreate(UserBase):
-    password: str  #them password khi tao user
+    password: str = Field(...,min_length=6, description="Mật khẩu")
 
 class UserLogin(BaseModel):
     username: str
     password: str
 
 class UserResponse(UserBase):
-    id: str
-
-class LogoutRequest(BaseModel):
-    user_id: str
-
-
+    username: str
+    message: str    

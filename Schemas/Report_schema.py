@@ -1,16 +1,17 @@
 from datetime import datetime 
 from typing import Optional
 from pydantic import BaseModel
+from pydantic import Field
 
 
 class ReportBase(BaseModel):
-    date: str
-    yesterday: str
-    today: str
+    date: str = Field(..., description="Ngày report")
+    yesterday: str = Field(..., description="Công việc hôm qua")
+    today: str = Field(..., description="Công việc hôm nay")
     
 # Khi tạo report, client chỉ gửi user_name
 class ReportCreate(ReportBase):
-    user_name: str
+    pass #inheritance from ReportBase
 
 class ReportUpdate(BaseModel):
     date: Optional[str] = None  

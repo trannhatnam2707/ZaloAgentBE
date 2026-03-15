@@ -1,4 +1,4 @@
-# Config/Model.py
+# Config/ModelAI.py
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
@@ -9,7 +9,7 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 def get_embedding(text: str):
     """Tạo embedding từ text sử dụng Gemini"""
-    model = "gemini-embedding-001"  # Gemini embedding modelcls
+    model = "gemini-embedding-001"  # Gemini embedding modelAI
     embedding = genai.embed_content(model="gemini-embedding-001", content=text)
     return embedding["embedding"]
 

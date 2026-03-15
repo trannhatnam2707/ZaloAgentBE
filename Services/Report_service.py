@@ -65,8 +65,7 @@ def update_report(id: str, data: dict) -> dict | None :
     )
     if result.modified_count:
         updated = reports_collection.find_one({"_id": ObjectId(id)})
-        # ✅ Sync ngay sang Pinecone
-        # ✅ Sync ngay sang Pinecone
+        # Sync ngay sang Pinecone
         from Utils.Embedding import sync_one_report
         sync_one_report(updated)
         return report_helper(updated)

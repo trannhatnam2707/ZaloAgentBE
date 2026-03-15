@@ -1,11 +1,11 @@
-# File: Utils/Agent.py
+# File: Utils/Agent.py 
 
 import re
 import json
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
-from Config.Model import generate_gemini_response
+from Config.ModelAI import generate_gemini_response
 from Utils.Logger import AgentLogger
 from Utils.Tools import Tools
 from Utils.MCP_Client import mcp_client

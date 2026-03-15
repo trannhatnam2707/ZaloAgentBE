@@ -21,7 +21,7 @@ def ask_endpoint(req: AskRequest):
     """
     try:
         print("\n" + "="*80)
-        print("📥 RECEIVED REQUEST:")
+        print("RECEIVED REQUEST:")
         print(f"   - Username: {req.username}")
         print(f"   - Question: {req.question}")
         print(f"   - Session ID: {req.session_id}")
@@ -36,7 +36,7 @@ def ask_endpoint(req: AskRequest):
         
         # Dùng username làm session_id nếu không có
         session_id = req.session_id or req.username
-        print(f"✅ Session ID: {session_id}")
+        print(f"Session ID: {session_id}")
         
         # Gọi agent
         result = ask_agent(
@@ -46,7 +46,7 @@ def ask_endpoint(req: AskRequest):
             top_k=req.top_k
         )
         
-        print("✅ Agent response successful")
+        print("Agent response successful")
         
         return {
             "answer": result["answer"],
@@ -56,15 +56,15 @@ def ask_endpoint(req: AskRequest):
         }
         
     except HTTPException as he:
-        print(f"❌ HTTP Exception: {he.detail}")
+        print(f"HTTP Exception: {he.detail}")
         raise he
         
     except Exception as e:
         print("\n" + "="*80)
-        print("❌ FATAL ERROR:")
+        print("FATAL ERROR:")
         print(f"   Error Type: {type(e).__name__}")
         print(f"   Error Message: {str(e)}")
-        print("\n📋 FULL TRACEBACK:")
+        print("\nFULL TRACEBACK:")
         traceback.print_exc()
         print("="*80 + "\n")
         
@@ -83,7 +83,7 @@ def clear_history_endpoint(req: ClearHistoryRequest):
             "message": "Đã xóa lịch sử" if success else "Session không tồn tại"
         }
     except Exception as e:
-        print(f"❌ Error clearing history: {e}")
+        print(f"Error clearing history: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -108,6 +108,6 @@ def get_session_info(session_id: str):
                 "message": "Session chưa có lịch sử"
             }
     except Exception as e:
-        print(f"❌ Error getting session: {e}")
+        print(f" Error getting session: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
