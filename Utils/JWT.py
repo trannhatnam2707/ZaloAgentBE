@@ -18,7 +18,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     if "type" not in to_encode:
         to_encode["type"] = "access" 
     to_encode["exp"] = expires
-    endcoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=[ALGORITHM])
+    endcoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return endcoded_jwt
 
 def create_refresh_token(data: dict, expires_delta: timedelta | None = None ) -> str: 
@@ -27,7 +27,7 @@ def create_refresh_token(data: dict, expires_delta: timedelta | None = None ) ->
     if "type" not in to_encode:
         to_encode["type"] = "refresh"
     to_encode["exp"] = expires
-    endcoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=[ALGORITHM])
+    endcoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return endcoded_jwt
 
 #---decode access token------#

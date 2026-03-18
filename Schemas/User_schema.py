@@ -3,13 +3,15 @@ from pydantic import Field
 
 
 class UserBase(BaseModel):
-    username: str = Field(..., description="Tên người dùng")
+    account: str = Field(..., description="Tên đăng nhập")
    
 class UserCreate(UserBase):
+    username: str = Field(..., description="Tên người dùng")
     password: str = Field(...,min_length=6, description="Mật khẩu")
+    ReEnterPassword: str = Field(..., min_length=6, description="Nhập lại mật khẩu khi đăng ký")
 
 class UserLogin(BaseModel):
-    username: str
+    account: str
     password: str
 
 class UserResponse(UserBase):

@@ -1,5 +1,5 @@
 from bson import ObjectId
-from Config.Model import get_embedding
+from Config.ModelAI import get_embedding
 from Database.MongoDB import reports_collection
 from Database.Pinecone import index
 from Services.Report_service import users_collection
