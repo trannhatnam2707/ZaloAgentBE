@@ -21,16 +21,17 @@ def migrate_legacy_data():
     owner_id = owner["_id"]
 
     #step 2: Create default group 
-    default_group = db.GroupChat.find_one({"group_id": "group001"})
+    default_group = db.Conversations.find_one({"group_id": "group001"})
 
     if not default_group:
         new_group = {
+            "type": "group",
             "group_id" : "group001",
             "group_name" : "Report Daily",
             "owner_id" : owner_id,
             "members" : all_user_ids
         }
-        result = db.GroupChat.insert_one(new_group)
+        result = db.Conversations.insert_one(new_group)
         group_object_id = result.inserted_id
         print(f"Đã tạo GroupChat mặc định. _id:{group_object_id}")
     else:

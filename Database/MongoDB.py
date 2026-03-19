@@ -17,7 +17,7 @@ try:
     db = client[MONGO_DB_NAME]
     reports_collection = db["Report"]
     users_collection = db["Users"]
-    GroupChat_collection = db["GroupChat"]
+    Conversation_collection = db["Conversations"]
     
 except ConnectionFailed :
     print(f"Kết nối MongoDB thất bại")

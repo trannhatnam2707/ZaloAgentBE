@@ -4,7 +4,7 @@ from jose import JWTError
 from bson.errors import InvalidId
 from bson.objectid import ObjectId
 
-from Database.MongoDB import GroupChat_collection
+from Database.MongoDB import Conversation_collection
 from Services.User_service import user_collection
 from Utils.JWT import verify_access_token
 
@@ -36,7 +36,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 
 
 def require_owner(
-    group_id: str = Path(..., description="ID của nhóm chat trên URL"), 
+    conversation_id: str = Path(..., description="ID của cuộc hôi thoai trên URL"), 
     token: str = Depends(oauth2_scheme)
 ):
     try:
@@ -52,18 +52,22 @@ def require_owner(
             raise HTTPException(status_code=401, detail="Người dùng không tồn tại")
 
         # 3. Tìm Group trong DB
-        group = GroupChat_collection.find_one({"_id": ObjectId(group_id)})
-        if not group:
-            raise HTTPException(status_code=404, detail="Không tìm thấy nhóm chat")
+        conversation = Conversation_collection.find_one({"_id": ObjectId(conversation_id)})
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Không tìm thấy cuộc trò chuyện")
 
-        # 4. CHỐT CHẶN: So sánh Owner ID với User ID
-        if str(group.get("owner_id")) != str(user["_id"]):
+        #4. CHỐT CHẶN KIỂM TRA QUYỀN: 
+        # Bắt buộc type phải là 'group' và owner_id phải khớp
+        if conversation.get("type") != "group":
+            raise HTTPException(status_code=400, detail="Đây là chat 1-1, không có chức năng chủ nhóm!")
+            
+        if str(conversation.get("owner_id")) != str(user["_id"]):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, 
                 detail="Từ chối truy cập! Chỉ chủ nhóm mới có quyền thực hiện hành động này."
             )
 
-        return group
+        return conversation
 
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token không hợp lệ hoặc đã hết hạn")
