@@ -50,7 +50,7 @@ def handle_get_user_by_username(username: str):
         user_data["message"] = "Lấy thông tin người dùng thành công!"
         return user_data
     except Exception as e :
-        raise HTTPException(status_code=404, detai= str(e))
+        raise HTTPException(status_code=404, detail= str(e))
 
 def handle_refresh_token(refresh_token: str):
     try:
@@ -71,3 +71,10 @@ def handle_refresh_token(refresh_token: str):
         
     except Exception as e:
         raise HTTPException(status_code=401, detail="Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.")
+
+def handle_search_users(keyword: str, current_user_id: str):
+    try:
+        users = User_service.search_users(keyword, current_user_id)
+        return users
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Lỗi khi tìm kiếm người dùng: " + str(e))

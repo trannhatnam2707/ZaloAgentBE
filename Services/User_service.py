@@ -1,6 +1,7 @@
 import hashlib
 from bson import ObjectId
 from Database.MongoDB import get_mongo_collection
+from Utils.String_utils import remove_vietnamese_accents
 
 
 user_collection = get_mongo_collection("Users")
@@ -30,6 +31,8 @@ def create_user(user_data: dict) -> dict:
 
     #hash password trước khi lưu
     user_data["password"] = hash_password(user_data["password"])
+
+    user_data["username_unsigned"] = remove_vietnamese_accents(user_data["username"])
 
     #lưu vào DB
     result = user_collection.insert_one(user_data)
@@ -84,3 +87,17 @@ def save_refresh_token(user_id: str, refresh_token: str):
         {"_id": ObjectId(user_id)},
         {"$set": {"refresh_token": refresh_token}}
     )
+
+# Tìm kiếm người dùng (để kết bạn/nhắn tin)
+def search_users(keyword: str, current_user_id: str) -> list:
+    # 1. Ép từ khóa khách gõ thành không dấu (VD: "Phúc" hay "phuc" đều thành "phuc")
+    clean_keyword = remove_vietnamese_accents(keyword)
+    
+    # 2. Tìm kiếm bằng Regex trên trường "username_unsigned"
+    query = {
+        "_id": {"$ne": ObjectId(current_user_id)}, 
+        "username_unsigned": {"$regex": clean_keyword, "$options": "i"} 
+    }
+    
+    users = user_collection.find(query).limit(20)
+    return [user_helper(user) for user in users]

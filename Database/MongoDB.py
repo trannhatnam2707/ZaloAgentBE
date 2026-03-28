@@ -17,8 +17,8 @@ try:
     db = client[MONGO_DB_NAME]
     reports_collection = db["Report"]
     users_collection = db["Users"]
-    conversations_collection = db["Conversations"]
-    messages_collection = db ["Messages"]
+    Conversation_collection = db["Conversations"]
+    messages_collection = db["Messages"]
 
 except ConnectionFailed :
     print(f"Kết nối MongoDB thất bại")
@@ -26,6 +26,8 @@ except ConnectionFailed :
     db = None
     reports_collection = None   
     users_collection = None
+    Conversation_collection = None
+    messages_collection = None
 
 #dùng để thao tác với collection trong DB
 def get_mongo_collection(collection_name: str):

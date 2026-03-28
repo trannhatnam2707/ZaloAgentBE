@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordRequestForm
 from Schemas.User_schema import UserCreate, UserLogin, UserResponse
@@ -46,6 +47,18 @@ def api_logout_user(
     return User_Controller.handle_logout(user_id)
 
 
+@router.get("/search", response_model=List[UserResponse])
+def api_search_users(
+    keyword: str = Query(..., description="Từ khóa tìm kiếm (tên username)"),
+    current_user: dict = Depends(get_current_user) # Bắt buộc đăng nhập
+):
+    """
+    API tìm kiếm người dùng bằng username. 
+    (Hệ thống sẽ tự động loại bỏ chính bạn ra khỏi kết quả).
+    """
+    user_id = str(current_user["_id"])
+    return User_Controller.handle_search_users(keyword, user_id)
+    
 @router.get("/{username}", response_model=UserResponse)
 def api_get_user_by_username(
     username: str,

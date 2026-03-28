@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel
 from pydantic import Field
 
@@ -15,5 +16,6 @@ class UserLogin(BaseModel):
     password: str
 
 class UserResponse(UserBase):
+    id: str = Field(..., description="Mã ID của user")
     username: str
-    message: str    
+    message: Optional[str] = None   

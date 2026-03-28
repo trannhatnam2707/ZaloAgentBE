@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from Config.Cors_config import configure_cors
 
-from Router import Ask_router, Report_router, User_router
+from Router import Ask_router, Message_router, Report_router, User_router, Conversation_router
 
 
 app = FastAPI()
@@ -13,4 +13,6 @@ configure_cors(app)
 app.include_router(Report_router.router)
 app.include_router(User_router.router)
 app.include_router(Ask_router.router)
+app.include_router(Conversation_router.router)
+app.include_router(Message_router.router)
     
