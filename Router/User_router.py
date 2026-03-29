@@ -69,3 +69,30 @@ def api_get_user_by_username(
     # FastAPI sẽ chửi lỗi 401 và chặn ngay ở cửa, không cho code chạy xuống dòng dưới.
     return User_Controller.handle_get_user_by_username(username)
 
+@router.get("/friends/list")
+def api_get_friends(current_user: dict = Depends(get_current_user)):
+    """Lấy danh sách bạn bè và lời mời kết bạn của mình"""
+    user_id = str(current_user["_id"])
+    return User_Controller.handle_get_friends_data(user_id)
+
+
+@router.post("/friends/request/{target_user_id}")
+def api_send_friend_request(target_user_id: str, current_user: dict = Depends(get_current_user)):
+    """Gửi lời mời kết bạn đến 1 người"""
+    user_id = str(current_user["_id"])
+    return User_Controller.handle_send_friend_request(user_id, target_user_id)
+
+
+@router.post("/friends/accept/{sender_id}")
+def api_accept_friend_request(sender_id: str, current_user: dict = Depends(get_current_user)):
+    """Đồng ý lời mời kết bạn"""
+    user_id = str(current_user["_id"])
+    return User_Controller.handle_accept_friend_request(user_id, sender_id)
+
+
+@router.delete("/friends/{target_user_id}")
+def api_remove_friend_or_request(target_user_id: str, current_user: dict = Depends(get_current_user)):
+    """Hủy kết bạn hoặc Từ chối lời mời"""
+    user_id = str(current_user["_id"])
+    return User_Controller.handle_remove_friend(user_id, target_user_id)
+

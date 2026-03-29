@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel
 from pydantic import Field
 
@@ -19,3 +19,5 @@ class UserResponse(UserBase):
     id: str = Field(..., description="Mã ID của user")
     username: str
     message: Optional[str] = None   
+    friends: Optional[List[str]] = []
+    friends_requests : Optional[List[str]] = []

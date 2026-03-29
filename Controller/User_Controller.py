@@ -78,3 +78,15 @@ def handle_search_users(keyword: str, current_user_id: str):
         return users
     except Exception as e:
         raise HTTPException(status_code=500, detail="Lỗi khi tìm kiếm người dùng: " + str(e))
+
+def handle_send_friend_request(sender_id: str, receiver_id: str):
+    return User_service.send_friend_request(sender_id, receiver_id)
+
+def handle_accept_friend_request(current_user_id: str, sender_id: str):
+    return User_service.accept_friend_request(current_user_id, sender_id)
+
+def handle_remove_friend(current_user_id: str, target_user_id: str):
+    return User_service.remove_friend_or_request(current_user_id, target_user_id)
+
+def handle_get_friends_data(current_user_id: str):
+    return User_service.get_my_friends_and_requests(current_user_id)
