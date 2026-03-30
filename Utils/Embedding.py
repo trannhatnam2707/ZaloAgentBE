@@ -1,88 +1,75 @@
 from bson import ObjectId
 from Config.ModelAI import get_embedding
-from Database.MongoDB import reports_collection
+from Database.MongoDB import reports_collection, users_collection # Sửa lại Import cho chuẩn
 from Database.Pinecone import index
-from Services.Report_service import users_collection
 
 # Hàm chia chunk
 def chunk_text(text, chunk_size=300, overlap=50):
     chunks = []
     start = 0
     text_length = len(text)
-
     while start < text_length:
         end = min(start + chunk_size, text_length)
         chunk = text[start:end]
         chunks.append(chunk)
-
         if end == text_length:
             break
-        start = end - overlap  # lùi overlap để giữ context
-
+        start = end - overlap
     return chunks
-
 
 # Đồng bộ report từ MongoDB qua Pinecone
 def sync_one_report(report: dict, report_id: str = None):
-    """Embed + upsert một report duy nhất vào Pinecone """
+    """Embed + upsert một report duy nhất vào Pinecone chuẩn cấu trúc mới"""
     if not report:
         return
-    if not report_id:
-        report_id = str(report["_id"])
     
-    #Lấy user_name từ users_collection bằng user_id
-    user = users_collection.find_one({"_id": ObjectId(report["user_id"])})
-    user_name = user["username"] if user else "Unknown"
+    # Lấy ID an toàn
+    if not report_id:
+        report_id = str(report.get("_id", ""))
+    
+    # Lấy ID người dùng và tên
+    user_id_str = str(report.get("user_id", ""))
+    user_name = "Unknown"
+    if user_id_str:
+        user = users_collection.find_one({"_id": ObjectId(user_id_str)})
+        if user:
+            user_name = user.get("username", "Unknown")
 
+    # Lấy Conversation ID (Hỗ trợ cả trường cũ 'group_id' cho an toàn)
+    conv_id = str(report.get("conversation_id", report.get("group_id", "")))
+
+    # Tạo nội dung siêu chi tiết cho AI học
     content = (
-        f"User: {user_name}\n"
-        f"Report date: {report.get('date', '')}\n"
-        f"Yesterday: {report.get('yesterday', '')}\n"
-        f"Today: {report.get('today', '')}"
+        f"Báo cáo công việc của nhân viên: {user_name}\n"
+        f"Ngày báo cáo: {report.get('date', '')}\n"
+        f"Nội dung hôm qua: {report.get('yesterday', '')}\n"
+        f"Nội dung hôm nay: {report.get('today', '')}"
     )
+    
     chunks = chunk_text(content)
-
     vectors = []
 
     for i, chunk in enumerate(chunks):
-            print("Chunk:", chunk)  # debug xem có nội dung không
+        try:
             embedding = get_embedding(chunk)
-            print("Embedding length:", len(embedding))  # debug độ dài vector
-
             vectors.append({
-                "id": f"{report_id}_chunk{i}",  # tránh trùng id
+                "id": f"{report_id}_chunk{i}",
                 "values": embedding,
                 "metadata": {
                     "report_id": report_id, 
-                    "user_id": str(report.get("user_id", "")),
+                    "user_id": user_id_str,
+                    "user_name": user_name,
+                    "conversation_id": conv_id, # Đã bổ sung theo Schema mới
                     "date": report.get("date", ""),
                     "chunk_index": i,
                     "text": chunk,
-                    "user_name": user_name,  
                 }
             })
+        except Exception as e:
+            print(f"Lỗi khi tạo embedding cho chunk {i} của report {report_id}: {e}")
 
     if vectors:
         index.upsert(vectors=vectors)
-        print(f"Synced {len(vectors)} chunks từ report {report_id} vào Pinecone")
+        print(f"✅ Đã đồng bộ {len(vectors)} chunks từ report {report_id} vào Pinecone")
     else:
-        print("Không có report nào để sync.")
-    
-# def add_report(report_data: dict):
-#     """Thêm report mới và sync ngay"""
-#     result = reports_collection.insert_one(report_data)
-#     report_id = str(result.inserted_id)
-#     sync_one_report(report_data,report_id)
-#     return report_id
-
-# def update_report(report_id: str, update_data: dict):
-#     """Update report mới và sync ngay"""
-#     reports_collection.update_one({"_id": ObjectId(report_id)}, {"$set": update_data})
-#     report = reports_collection.find_one({"_id":ObjectId(report_id)})
-#     sync_one_report(report, report_id)
-
-# if __name__ == "__main__":
-#     reports = list(reports_collection.find({}))
-#     for r in reports:
-#         sync_one_report(r)
-
+        print("⚠️ Không có vector nào được tạo để sync.")

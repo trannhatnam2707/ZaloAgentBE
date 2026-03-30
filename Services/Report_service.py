@@ -21,6 +21,7 @@ def report_helper(report) -> dict:
         "today": report["today"],
         "created_at": report["created_at"],
         "updated_at": report["updated_at"],
+        "conversation_id": report.get("conversation_id", "")
     }
     
 #Create
@@ -40,7 +41,6 @@ def create_report(data: dict) -> dict:
     result = reports_collection.insert_one(data)
     new_report = reports_collection.find_one({"_id": result.inserted_id})
     #Sync ngay sang Pinecone
-    # ✅ Sync ngay sang Pinecone
     from Utils.Embedding import sync_one_report
     sync_one_report(new_report)
 

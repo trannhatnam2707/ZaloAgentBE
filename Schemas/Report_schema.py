@@ -8,6 +8,7 @@ class ReportBase(BaseModel):
     date: str = Field(..., description="Ngày report")
     yesterday: str = Field(..., description="Công việc hôm qua")
     today: str = Field(..., description="Công việc hôm nay")
+    conversation_id: Optional[str] = Field(default=None, description="ID của phòng chat chứa report này")
     
 # Khi tạo report, client chỉ gửi user_name
 class ReportCreate(ReportBase):
