@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from jose import JWTError, jwt
 
 
-load_dotenv()
+load_dotenv(override=True)
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRES_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRES_MINUTES"))
