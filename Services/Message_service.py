@@ -197,7 +197,7 @@ class MessageService:
             "date": report_date,
             "yesterday": yesterday_text,
             "today": today_text,
-            "conversation_id": str(conv_id) # Nhồi conversation_id vào để lưu xuống DB Report
+            "conversation_id": conv_id # Nhồi conversation_id vào để lưu xuống DB Report
         }
 
         # Lưu report (Hàm này sẽ tự động gọi sync_one_report sang Pinecone)
