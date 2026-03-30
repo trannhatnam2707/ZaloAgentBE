@@ -21,7 +21,7 @@ def report_helper(report) -> dict:
         "today": report["today"],
         "created_at": report["created_at"],
         "updated_at": report["updated_at"],
-        "conversation_id": report.get("conversation_id", "")
+        "conversation_id": str(report.get("conversation_id", ""))
     }
     
 #Create
