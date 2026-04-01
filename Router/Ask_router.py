@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from Services.Ask_service import ask_agent, clear_chat_history
 import traceback
 
-router = APIRouter()
+router = APIRouter(prefix="/ask", tags=["AskAI"])
 
 class AskRequest(BaseModel):
     question: str
@@ -14,7 +14,7 @@ class AskRequest(BaseModel):
 class ClearHistoryRequest(BaseModel):
     session_id: str
 
-@router.post("/ask")
+@router.post("/")
 def ask_endpoint(req: AskRequest):
     """
     Endpoint với error handling chi tiết
@@ -25,7 +25,7 @@ def ask_endpoint(req: AskRequest):
         print(f"   - Username: {req.username}")
         print(f"   - Question: {req.question}")
         print(f"   - Session ID: {req.session_id}")
-        print("="*80)
+        print("="*50)
         
         # Kiểm tra username
         if not req.username or req.username.strip() == "":
@@ -73,41 +73,16 @@ def ask_endpoint(req: AskRequest):
             detail=f"Lỗi server: {type(e).__name__} - {str(e)}"
         )
 
-@router.post("/clear-history")
-def clear_history_endpoint(req: ClearHistoryRequest):
-    """Xóa lịch sử chat"""
-    try:
-        success = clear_chat_history(req.session_id)
-        return {
-            "success": success,
-            "message": "Đã xóa lịch sử" if success else "Session không tồn tại"
-        }
-    except Exception as e:
-        print(f"Error clearing history: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/session/{session_id}")
-def get_session_info(session_id: str):
-    """Lấy thông tin session"""
-    try:
-        from Utils.Agent import conversational_agent
-        
-        if session_id in conversational_agent.sessions:
-            memory = conversational_agent.sessions[session_id]
-            return {
-                "session_id": session_id,
-                "message_count": len(memory.messages),
-                "summary": memory.get_summary(),
-                "exists": True
-            }
-        else:
-            return {
-                "session_id": session_id,
-                "exists": False,
-                "message": "Session chưa có lịch sử"
-            }
-    except Exception as e:
-        print(f" Error getting session: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+# @router.post("/clear-history")
+# def clear_history_endpoint(req: ClearHistoryRequest):
+#     """Xóa lịch sử chat"""
+#     try:
+#         success = clear_chat_history(req.session_id)
+#         return {
+#             "success": success,
+#             "message": "Đã xóa lịch sử" if success else "Session không tồn tại"
+#         }
+#     except Exception as e:
+#         print(f"Error clearing history: {e}")
+#         traceback.print_exc()
+#         raise HTTPException(status_code=500, detail=str(e))

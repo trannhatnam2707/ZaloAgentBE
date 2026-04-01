@@ -1,11 +1,11 @@
 try:
-    from Utils.Agent import conversational_agent
-    print("✅ Import conversational_agent thành công")
+    from MCP_Client.Agent import conversational_agent
+    print("Import conversational_agent thành công")
 except ImportError as e:
-    print(f"❌ Lỗi import conversational_agent: {e}")
+    print(f"Lỗi import conversational_agent: {e}")
     raise
 except Exception as e:
-    print(f"❌ Lỗi khác khi import: {e}")
+    print(f"Lỗi khác khi import: {e}")
     raise
 
 def ask_agent(question: str, username: str, session_id: str, top_k: int = 10) -> dict:
@@ -22,7 +22,7 @@ def ask_agent(question: str, username: str, session_id: str, top_k: int = 10) ->
         dict: Kết quả từ Agent
     """
     try:
-        print(f"🔄 [Ask_service] Calling agent with:")
+        print(f"[Ask_service] Calling agent with:")
         print(f"   - username: {username}")
         print(f"   - session_id: {session_id}")
         print(f"   - question: {question}")
@@ -34,11 +34,11 @@ def ask_agent(question: str, username: str, session_id: str, top_k: int = 10) ->
             top_k=top_k
         )
         
-        print("✅ [Ask_service] Agent returned result")
+        print("Ask_service] Agent returned result")
         return result
         
     except Exception as e:
-        print(f"❌ [Ask_service] Error: {e}")
+        print(f"[Ask_service] Error: {e}")
         import traceback
         traceback.print_exc()
         raise
@@ -50,5 +50,5 @@ def clear_chat_history(session_id: str) -> bool:
     try:
         return conversational_agent.clear_session(session_id)
     except Exception as e:
-        print(f"❌ [clear_chat_history] Error: {e}")
+        print(f"[clear_chat_history] Error: {e}")
         return False

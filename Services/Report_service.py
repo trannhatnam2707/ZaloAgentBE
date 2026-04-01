@@ -1,5 +1,6 @@
 import datetime
 from bson import ObjectId
+from fastapi import HTTPException
 from Database.MongoDB import get_mongo_collection, users_collection
 from Database.Pinecone import index
 
@@ -30,6 +31,17 @@ def create_report(data: dict) -> dict:
     user = users_collection.find_one({"username": data["user_name"]})
     if not user:
         raise ValueError("User not found")
+
+    #check trùng lặp tránh spam report
+    existing_report = reports_collection.find_one({
+        "user_id":user["_id"],
+        "date": data["date"]
+    })
+    if existing_report:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bạn đã có báo cáo cho ngày {data["date"]} rồi! Hãy cập nhật nếu bạn muốn sửa đổi lại nội dung report "
+        )
     
     # Thay thế user_name bằng user_id
     data["user_id"] = user["_id"]
