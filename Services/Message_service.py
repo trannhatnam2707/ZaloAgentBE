@@ -25,7 +25,7 @@ class MessageService:
         if ObjectId(current_user_id) not in conversation.get("members", []):
             raise HTTPException(status_code=403, detail="Bạn không có quyền nhắn tin vào phòng chat này")
 
-        # 🚨 TÍNH NĂNG ĐÁNH CHẶN SLASH COMMAND (Mềm dẻo: chấp nhận cả /report và report)
+        # TÍNH NĂNG ĐÁNH CHẶN SLASH COMMAND (Mềm dẻo: chấp nhận cả /report và report)
         content_lower = data.content.strip().lower()
         if content_lower.startswith("/report") or content_lower.startswith("report"):
             return MessageService._handle_report_command(data.content, conv_id, current_user_id)
