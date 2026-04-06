@@ -17,6 +17,12 @@ def api_register_user(user: UserCreate):
     # Ném thẳng cho Controller lo liệu
     return User_Controller.handle_register(user)
 
+
+@router.get("/getMe/", response_model=UserResponse)
+def api_getMe(current_user:dict = Depends(get_current_user)):
+    user_id = str(current_user["_id"])
+    return User_Controller.handle_getMe(user_id)
+
 @router.post("/login", response_model=dict)
 def api_login_user(
     # Bắt FastAPI hứng dữ liệu từ Form của Swagger UI

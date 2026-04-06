@@ -23,3 +23,6 @@ class ConversationResponse(BaseModel):
     group_id: Optional[str] = None
     group_name: Optional[str] = None
     owner_id: Optional[str] = None
+
+class LeaveGroupRequest(BaseModel):
+    user_id: str

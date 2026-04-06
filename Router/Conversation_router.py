@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends
 from Middleware.Auth_middleware import get_current_user, require_owner
-from Schemas.Conversation_schema import ConversationCreate, ConversationResponse
+from Schemas.Conversation_schema import ConversationCreate, ConversationResponse, LeaveGroupRequest
 from Controller.Conversation_Controller import ConversationController
 
 
@@ -33,3 +33,12 @@ def api_kick_member(
     group: dict = Depends(require_owner)
 ):
     return ConversationController.kick_member(conservation_id,member_to_kick_id)
+
+@router.post("/{conversation_id}/leave")
+def leave_conversation(conversation_id: str, req: LeaveGroupRequest):
+    result = ConversationController.leave_group(conversation_id, req.user_id)
+    return {
+        "success": True,
+        "message": "Đã rời nhóm thành công",
+        "data": result
+    }

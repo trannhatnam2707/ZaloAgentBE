@@ -21,3 +21,11 @@ class ConversationController:
     @staticmethod
     def kick_member(conservation_id: str, new_member_id: str):
         return ConversationService.remove_member_from_group(conservation_id,new_member_id)
+
+    @staticmethod
+    def leave_group(conversation_id: str, current_user_id: str):
+        """
+        Logic rời nhóm: Thực chất là gỡ bản thân (current_user_id) ra khỏi nhóm.
+        Nếu service của bạn có logic tự động xóa nhóm khi = 0 người thì càng tốt!
+        """
+        return ConversationService.remove_member_from_group(conversation_id, current_user_id)

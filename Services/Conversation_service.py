@@ -93,14 +93,29 @@ class ConversationService:
         return ConversationService._format_conversation(updated)
 
     @staticmethod
-    def remove_member_from_group(conversatio_id:str,member_to_remove_id: str):
-        #Dùng  $pull để rút ID người dùng ra khỏi mảng members
-        updated = Conversation_collection.find_one_and_update(
-            {"_id": ObjectId(conversatio_id)},
-            {"$pull": {"members": ObjectId(member_to_remove_id)}},
-            return_document=True
-        )
-        return ConversationService._format_conversation(updated)
+    def remove_member_from_group(conversation_id: str, member_id: str):
+        try:
+            
+            result = Conversation_collection.find_one_and_update(
+                {"_id": ObjectId(conversation_id)},
+                {"$pull": {"members": member_id}}
+            )
+
+            if result.modified_count == 0:
+                raise ValueError("Không tìm thấy user trong nhóm này.")
+
+            # Kiểm tra nếu nhóm không còn ai thì xóa luôn nhóm!
+            updated_conv = Conversation_collection.find_one({"_id": ObjectId(conversation_id)})
+            if updated_conv and len(updated_conv.get("members", [])) == 0:
+                Conversation_collection.delete_one({"_id": ObjectId(conversation_id)})
+                return {"message": "Đã xóa user và xóa luôn nhóm vì không còn thành viên."}
+
+            return {"message": "Đã xóa user khỏi nhóm thành công."}
+
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Lỗi: {str(e)}")
     
     @staticmethod
     def get_my_conversation(current_user_id:str):
