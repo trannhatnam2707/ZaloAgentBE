@@ -1,4 +1,5 @@
-from datetime import  datetime
+from datetime import datetime
+import re
 from bson import ObjectId
 from fastapi import HTTPException
 from Database.MongoDB import db
@@ -12,7 +13,8 @@ class ConversationService:
     # --- Hàm Helper dùng chung để format ID ---
     @staticmethod
     def _format_conversation(conv):
-        if not conv: return None
+        if not conv:
+            return None
         conv["id"] = str(conv["_id"])
         conv["members"] = [str(m) for m in conv.get("members", [])]
         if conv.get("owner_id"):
@@ -20,7 +22,11 @@ class ConversationService:
         return conv
 
     @staticmethod
-    def create_or_get_direct_chat(current_user_id: str, target_user_id: str):
+    def create_or_get_direct_chat(current_user_id: str, target_user_id: str, name: str):
+        clean_name = (name or "").strip()
+        if not clean_name:
+            raise HTTPException(status_code=400, detail="Tên hội thoại không được để trống.")
+
         if current_user_id == target_user_id:
             raise HTTPException(status_code=400, detail="Bạn không thể tự chat với chính mình!")
         
@@ -39,10 +45,17 @@ class ConversationService:
         })
 
         if existing_chat:
+            if not existing_chat.get("name"):
+                Conversation_collection.update_one(
+                    {"_id": existing_chat["_id"]},
+                    {"$set": {"name": clean_name}}
+                )
+                existing_chat["name"] = clean_name
             return ConversationService._format_conversation(existing_chat)
 
         new_chat = {
             "type": "direct",
+            "name": clean_name,
             "members" : [user1, user2],
             "created_at" : datetime.utcnow()
         }
@@ -52,7 +65,11 @@ class ConversationService:
 
 
     @staticmethod
-    def create_group_chat(group_name: str, members_ids: list[str], owner_id: str):
+    def create_group_chat(name: str, members_ids: list[str], owner_id: str):
+        clean_name = (name or "").strip()
+        if not clean_name:
+            raise HTTPException(status_code=400, detail="Tên hội thoại không được để trống.")
+
         #1. xử lý danh sách thành viên
         obj_member_id = []
         for mid in members_ids:
@@ -71,7 +88,8 @@ class ConversationService:
 
         new_group  = {
             "type": "group",
-            "group_name": group_name,
+            "name": clean_name,
+            "group_name": clean_name,
             "owner_id": owner_obj_id,
             "members":  obj_member_id,
             "created_at": datetime.utcnow()
@@ -118,13 +136,29 @@ class ConversationService:
             raise HTTPException(status_code=500, detail=f"Lỗi: {str(e)}")
     
     @staticmethod
-    def get_my_conversation(current_user_id:str):
-        cursor = Conversation_collection.find({
-            "members": ObjectId(current_user_id),
-        }).sort([
+    def get_my_conversation(current_user_id: str, keyword: str = ""):
+        query = {"members": ObjectId(current_user_id)}
+        clean_keyword = keyword.strip()
+        if clean_keyword:
+            query["name"] = {"$regex": re.escape(clean_keyword), "$options": "i"}
+
+        cursor = Conversation_collection.find(query).sort([
             ("updated_at", -1),
             ("created_at", -1),
         ])
-        return [ConversationService._format_conversation(c) for c in cursor]
+        conversations = [ConversationService._format_conversation(c) for c in cursor]
+
+        # Tự vá dữ liệu cũ chưa có name để FE luôn hiển thị được tên thay vì id.
+        for conv in conversations:
+            if conv.get("name"):
+                continue
+            fallback_name = conv.get("group_name") if conv.get("type") == "group" else "Direct chat"
+            conv["name"] = fallback_name
+            Conversation_collection.update_one(
+                {"_id": ObjectId(conv["id"])},
+                {"$set": {"name": fallback_name}}
+            )
+
+        return conversations
 
     

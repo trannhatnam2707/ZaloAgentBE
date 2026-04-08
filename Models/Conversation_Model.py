@@ -5,6 +5,7 @@ from datetime import datetime
 class Conversation_Model(BaseModel):
     # TRƯỜNG PHÂN LOẠI (Bắt buộc)
     type: str = Field(..., description="Loại hội thoại: 'direct' (1-1) hoặc 'group' (Nhóm)") 
+    name: str = Field(..., description="Tên cuộc hội thoại để FE hiển thị và tìm kiếm")
     
     # DANH SÁCH THÀNH VIÊN (Bắt buộc)
     members: List[str] = Field(..., description="Danh sách ID của các thành viên")

@@ -5,6 +5,7 @@ from typing import List, Optional
 class ConversationCreate(BaseModel):
     # FE phải báo cho BE biết là muốn tạo chat loại gì
     type: str = Field(..., description="Bắt buộc truyền 'direct' hoặc 'group'")
+    name: str = Field(..., description="Tên cuộc hội thoại là bắt buộc không được để trống")
     
     # Danh sách ID những người muốn thêm vào (Chưa tính bản thân người tạo)
     members: List[str] = Field(default=[], description="Danh sách ID thành viên muốn thêm vào ngay lúc tạo")
@@ -16,6 +17,7 @@ class ConversationCreate(BaseModel):
 # 2. Schema khi Backend trả dữ liệu về cho Frontend hiển thị
 class ConversationResponse(BaseModel):
     id: str = Field(..., description="Mã _id của MongoDB")
+    name: str = Field(..., description="Tên cuộc hội thoại để hiển thị/search")
     type: str = Field(..., description="'direct' hoặc 'group'")
     members: List[str] = Field(..., description="Danh sách ID tất cả thành viên (Bao gồm cả người tạo)")
     
