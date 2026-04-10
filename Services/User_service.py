@@ -85,6 +85,14 @@ def get_all_users() -> list:
     users = user_collection.find()
     return [user_helper(user) for user in users]
 
+def get_me(user_id:str):
+    user =  user_collection.find_one({"_id": ObjectId(user_id)})
+
+    if not user:
+        raise ValueError("Không tìm thấy thông tin tài khoản của bạn!")
+    return user_helper(user)
+
+    
 def save_refresh_token(user_id: str, refresh_token: str):
     # Lưu thẻ căn cước vào DB để sau này đối chiếu
     user_collection.update_one(

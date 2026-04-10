@@ -44,6 +44,14 @@ def handle_logout(user_id: str):
         return {"message": "Logout Successful"}
     raise HTTPException(status_code=400, detail="User not logged in")
 
+def handle_getMe(user_id: str):
+    try:
+        user_data = User_service.get_me(user_id)
+        user_data["message"] = "Lấy thông tin cá nhân thành công!"
+        return user_data
+    except Exception as e :
+        raise HTTPException(status_code=404, detail=str(e))
+
 def handle_get_user_by_username(username: str):
     try:
         user_data = User_service.get_user_by_username(username)
