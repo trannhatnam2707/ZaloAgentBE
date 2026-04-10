@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from Services.Ask_service import ask_agent, clear_chat_history
+from Services.Ask_service import ask_agent
 import traceback
 
 router = APIRouter(prefix="/ask", tags=["AskAI"])

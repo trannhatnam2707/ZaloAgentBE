@@ -8,7 +8,7 @@ from MCP_Server.Agent_Tools import GEMINI_TOOLS
 
 #Bộ nhớ lưu trữ ngữ cảnh (memory)
 class ConversationMemory:
-    def __init__(self, max_history: int = 30):
+    def __init__(self, max_history: int = 10):
         self.messages: List[Dict] = []
         self.max_history = max_history
 
@@ -95,7 +95,7 @@ class ConversationAgent:
         )
         try:
             print(f"[AGENT] Đang gửi request và tools đến cho Gemini...")
-            chat = self.ai_client.chat.create(
+            chat = self.ai_client.chats.create(
                 model = "gemini-2.5-flash",
                 config = config,
                 history = memory.get_gemini_history(),
