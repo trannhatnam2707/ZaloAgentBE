@@ -10,9 +10,9 @@ class ConversationController:
     def start_chat(data: ConversationCreate, current_user_id: str):
         if data.type == "direct":
             target_user_id = data.members[0] if data.members else ""
-            return ConversationService.create_or_get_direct_chat(current_user_id, target_user_id, data.name)
+            return ConversationService.create_or_get_direct_chat(current_user_id, target_user_id)
         elif data.type == "group":
-            return ConversationService.create_group_chat(data.name, data.members, current_user_id)
+            return ConversationService.create_group_chat(data.conv_name, data.members, current_user_id)
     
     @staticmethod
     def add_member(conservation_id: str, new_member_id: str):

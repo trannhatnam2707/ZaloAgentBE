@@ -8,4 +8,4 @@ class AgentLogger:
         print(f"[{step}] {detail}")
 
     def get_logs(self):
-        return self.logs        
+        return self.logs

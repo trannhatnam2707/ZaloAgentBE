@@ -17,7 +17,7 @@ def api_get_my_conservations(
 @router.post("/", response_model=ConversationResponse)
 def api_create_conservation(data: ConversationCreate, current_user: dict = Depends(get_current_user)):
     # Tạo phòng chat mới : 
-    # -Nếu type:"redict": truyền 1 ID của Bạn bè vào mảng member.
+    # -Nếu type:"direct": truyền 1 ID của Bạn bè vào mảng member.
     # -Nếu type:"Group" : truyền group_name và danh sách ID vào mảng member
     return ConversationController.start_chat(data, str(current_user["_id"]))
 
