@@ -78,6 +78,7 @@ def handle_refresh_token(refresh_token: str):
         return {"access_token": new_access_token, "token_type": "bearer"}
         
     except Exception as e:
+        print(f"DEBUG REFRESH ERROR: {str(e)}") # Thêm dòng này để xem lỗi thực sự
         raise HTTPException(status_code=401, detail="Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.")
 
 def handle_search_users(keyword: str, current_user_id: str):

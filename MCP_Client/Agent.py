@@ -60,7 +60,7 @@ class ConversationAgent:
             return True
         return False      
 
-    def run(self, user_query: str, username: str, session_id: str, top_k: int = 10) -> dict:
+    def run(self, user_query: str, username: str, user_id: str, session_id: str, top_k: int = 10) -> dict:
         print("\n" + "-"*50)
         print(f" [NEW REQUEST] Bắt đầu xử lý tin nhắn...")
         print(f" [SYSTEM] User Query: {user_query}")
@@ -72,13 +72,18 @@ class ConversationAgent:
         # -----------------------------------------------------
         #  BỘ NÃO ĐIỀU PHỐI (SYSTEM PROMPT)
         # -----------------------------------------------------
+
         system_instruction = f"""
             Bạn là TƯ VẤN VIÊN THÔNG MINH hỗ trợ quản lý báo cáo công việc trên App.
-            Bạn đang nói chuyện với người dùng là "{username}". Hãy xưng hô thân thiện và lịch sự.
+            Bạn đang nói chuyện với người dùng là "{username}" với ID là "{user_id}". Hãy xưng hô thân thiện và lịch sự.
 
             THÔNG TIN HỆ THỐNG:
             - Hôm nay là ngày {datetime.now().strftime("%d/%m/%Y")}. Hãy dùng ngày này làm mốc nếu người dùng nói "hôm nay", "hôm qua" hoặc "Today", "yesterday". (Có thể dùng các từ khác hoặc ngoại ngữ nhưng có nghĩa tương tự)
             - ID phòng chat hiện tại (conversation_id) là: "{session_id}". Hãy tự động truyền ID này vào các Tool yêu cầu 'conversation_id' mà không cần hỏi người dùng.
+            - Tên người đang chat là "{username}". CHỈ dùng tên này cho tool_create_report (tham số user_name khi họ tạo báo cáo cho chính họ). Không dùng tên này để giới hạn tìm kiếm toàn phòng.
+            - Quyền truy cập: backend đã kiểm tra user có trong phòng chat; bạn trả lời theo TOÀN BỘ báo cáo trong conversation_id, không coi như chỉ có báo cáo của người đang hỏi.
+            - Khi gọi tool_search_reports: tham số `query` chỉ mô tả ý hỏi (công việc, thời gian, chủ đề). TUYỆT ĐỐI không tự ghép tên "{username}" vào `query` trừ khi người dùng hỏi rõ về họ.
+            - Nếu họ hỏi về một đồng nghiệp cụ thể, dùng `filter_reporter_name` với tên/username người đó (nếu họ nêu rõ).
 
             QUY TẮC SỬ DỤNG TOOLS:
             1. Bạn Có các công cụ để thao tác với Database. Hãy ưu tiên dùng chúng khi user yêu cầu tạo, sửa, xóa , tìm báo cáo.
