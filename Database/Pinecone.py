@@ -1,5 +1,3 @@
-# File: Database/Pinecone.py
-
 import os
 from pinecone import Pinecone, ServerlessSpec
 from dotenv import load_dotenv
@@ -7,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY_V2")
-# print(f"🔑 Đã nạp thành công Key Pinecone: {str(PINECONE_API_KEY)[:5]}...")
+# print(f"Đã nạp thành công Key Pinecone: {str(PINECONE_API_KEY)[:5]}...")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX", "agentzalo")
 
 if not PINECONE_API_KEY:

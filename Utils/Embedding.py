@@ -38,9 +38,10 @@ def sync_one_report(report: dict, report_id: str = None):
     # Lấy Conversation ID (Hỗ trợ cả trường cũ 'group_id' cho an toàn)
     conv_id = str(report.get("conversation_id", report.get("group_id", "")))
 
-    # Tạo nội dung siêu chi tiết cho AI học
+    # Chỉ embed nội dung công việc + ngày — KHÔNG nhét tên người vào text embed
+    # (tên vẫn có trong metadata user_name để hiển thị / lọc tùy chọn). Tránh bias:
+    # query kiểu "có ai đã report" không bị kéo về đúng một người vì vector trùng tên.
     content = (
-        f"Báo cáo công việc của nhân viên: {user_name}\n"
         f"Ngày báo cáo: {report.get('date', '')}\n"
         f"Nội dung hôm qua: {report.get('yesterday', '')}\n"
         f"Nội dung hôm nay: {report.get('today', '')}"
@@ -59,7 +60,7 @@ def sync_one_report(report: dict, report_id: str = None):
                     "report_id": report_id, 
                     "user_id": user_id_str,
                     "user_name": user_name,
-                    "conversation_id": conv_id, # Đã bổ sung theo Schema mới
+                    "conversation_id": conv_id, # bổ sung theo Schema mới
                     "date": report.get("date", ""),
                     "chunk_index": i,
                     "text": chunk,
@@ -70,6 +71,6 @@ def sync_one_report(report: dict, report_id: str = None):
 
     if vectors:
         index.upsert(vectors=vectors)
-        print(f"✅ Đã đồng bộ {len(vectors)} chunks từ report {report_id} vào Pinecone")
+        print(f"Đã đồng bộ {len(vectors)} chunks từ report {report_id} vào Pinecone")
     else:
-        print("⚠️ Không có vector nào được tạo để sync.")
+        print(" Không có vector nào được tạo để sync.")

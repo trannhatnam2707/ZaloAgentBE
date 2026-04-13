@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from Middleware.Auth_middleware import get_current_user
 from Services.Ask_service import ask_agent
 import traceback
 
@@ -15,10 +16,12 @@ class ClearHistoryRequest(BaseModel):
     session_id: str
 
 @router.post("/")
-def ask_endpoint(req: AskRequest):
+def ask_endpoint(req: AskRequest, current_user: dict = Depends(get_current_user)):
     """
     Endpoint với error handling chi tiết
     """
+    user_id = str(current_user["_id"])
+    real_name = current_user.get("display_name") or current_user.get("username")
     try:
         print("\n" + "="*80)
         print("RECEIVED REQUEST:")
@@ -41,9 +44,10 @@ def ask_endpoint(req: AskRequest):
         # Gọi agent
         result = ask_agent(
             question=req.question,
-            username=req.username,
+            username=real_name,
             session_id=session_id,
-            top_k=req.top_k
+            top_k=req.top_k,
+            current_user_id = user_id
         )
         
         print("Agent response successful")

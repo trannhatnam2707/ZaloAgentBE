@@ -55,25 +55,46 @@ def tool_delete_report(report_id: str) -> str:
     except Exception as e:
         return f"Lỗi khi xóa report: {str(e)}"
 
-def tool_search_reports(query: str, username: str, date_filter: str ="", top_k: int = 5) -> str:
+def tool_search_reports(
+    query: str,
+    username: str,
+    conversation_id: str,
+    date_filter: str = "",
+    filter_reporter_name: str = "",
+    top_k: int = 20,
+) -> str:
     """
-        Sử dụng công cụ này để tìm kiếm và tra cứu các report công việc cũ của người dùng.
-        Tham số date_filter (YYYY-MM-DD) là tùy chọn, chỉ truyền vào nếu người dùng chỉ định rõ ngày tháng cụ thể.
-        Dùng khi người dùng hỏi các câu như "Hôm qua/tuần qua anh A làm gì", "hay là nội dung X anh A làm vào lúc nào" ,...... 
-    """
-    try: 
-        embedding = get_embedding(f"Báo cáo của {username} về : {query}")
+    Tham số date_filter (YYYY-MM-DD) là tùy chọn, hãy lọc theo yêu cầu của người dùng. Không nhất thiết là phải đủ cả ngày, tháng, năm cụ thể mới search.
+    Tìm báo cáo trong phòng chat (đã giới hạn bởi conversation_id). Truy vấn semantic chỉ mô tả
+    nội dung cần tìm (công việc, chủ đề, ngày...). KHÔNG ghép tên người đang chat vào `query`
+    trừ khi user hỏi cụ thể về một người — khi đó đặt tên đó vào `filter_reporter_name`.
 
-        pincone_filter = None
-        if date_filter :
-            pincone_filter = {"date": {"$eq":date_filter}}
+    - username: người đang hỏi (chỉ để message/log, không dùng để lọc vector).
+    - filter_reporter_name: tùy chọn, lọc theo metadata user_name khi user hỏi về một người cụ thể.
+    """
+    try:
+        embedding = get_embedding(query)
+        if not embedding:
+            return "Không tạo được embedding cho câu tìm kiếm."
+
+        pincone_filter: dict = {"conversation_id": {"$eq": conversation_id}}
+
+        if (filter_reporter_name or "").strip():
+            pincone_filter["user_name"] = {"$eq": (filter_reporter_name or "").strip()}
+
         results = search_pinecone(embedding, top_k, filter=pincone_filter)
         matches = results.get("matches", [])
 
-        valid_matches = [m for m in matches if m.get('score', 0) >= 0.7]
+        valid_matches = [m for m in matches if m.get("score", 0) >= 0.5]
+
+        if date_filter:
+            valid_matches = [
+                m for m in valid_matches
+                if m.get("metadata",{}).get("date", "").startswith(date_filter)
+            ]
 
         if not valid_matches:
-            return f"Không tìm thấy báo cáo nào của {username} khớp với {query}"
+            return f"Không tìm thấy báo cáo nào trong phòng chat này khớp với từ khóa tìm kiếm: {query!r}"
 
         res_text = f" Tìm thấy {len(valid_matches)} báo cáo:\n\n"
         for i, match in enumerate(valid_matches,1):
