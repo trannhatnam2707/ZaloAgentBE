@@ -117,15 +117,30 @@ def search_users(keyword: str, current_user_id: str) -> list:
 def send_friend_request(sender_id: str, receiver_id: str):
     if sender_id == receiver_id:
         raise HTTPException(status_code=400, detail="Không thể tự kết bạn với chính mình!")
+    
     receiver_obj_id = ObjectId(receiver_id)
     sender_obj_id = ObjectId(sender_id)
 
+    # Phải lấy thông tin của cả 2 người ra để kiểm tra chéo
     receiver = user_collection.find_one({"_id": receiver_obj_id})
+    sender = user_collection.find_one({"_id": sender_obj_id})
+    
     if not receiver: 
         raise HTTPException(status_code=404, detail="Người dùng không tồn tại!")
     
+    # 1. Kiểm tra: Đã là bạn bè chưa?
     if sender_obj_id in receiver.get("friends", []):
-        raise HTTPException(status_code=400, detail="đã là bạn bè!")
+        raise HTTPException(status_code=400, detail="Hai người đã là bạn bè!")
+
+    # 2. Kiểm tra: Mình đã gửi lời mời cho họ chưa? (Chống spam click 2 lần)
+    if sender_obj_id in receiver.get("friend_requests", []):
+        raise HTTPException(status_code=400, detail="Bạn đã gửi lời mời rồi, đang chờ người kia xác nhận!")
+
+    # 3. FIX BUG CHÍNH: Kiểm tra xem họ có đang gửi lời mời cho mình không?
+    if receiver_obj_id in sender.get("friend_requests", []):
+        raise HTTPException(status_code=400, detail="Người này đã gửi lời mời cho bạn rồi. Hãy kiểm tra danh sách lời mời và bấm Chấp nhận!")
+
+    # Nếu qua hết các bài test, mới tiến hành lưu
     user_collection.update_one(
         {"_id": receiver_obj_id},
         {"$addToSet": {"friend_requests": sender_obj_id}}
@@ -136,21 +151,24 @@ def send_friend_request(sender_id: str, receiver_id: str):
 def accept_friend_request(current_user_id: str, sender_id: str):
     user_obj_id = ObjectId(current_user_id)
     sender_obj_id =  ObjectId(sender_id)
-
     
     user = user_collection.find_one({"_id": user_obj_id})
     
-    #1. kiểm tra xem có lời mòi không
+    # 1. kiểm tra xem có lời mời không
     if sender_obj_id not in user.get("friend_requests", []):
-        raise HTTPException(status_code=400, detail="Không tim thấy lời mời kết bạn này!")
+        raise HTTPException(status_code=400, detail="Không tìm thấy lời mời kết bạn này!")
     
-    #2. Rút người kia ra khỏi danh sách chờ của mình 
+    # 2. Dọn dẹp mảng chờ: Rút người kia ra khỏi danh sách chờ của mình VÀ ngược lại (Đề phòng data rác từ lúc bị bug)
     user_collection.update_one(
-        {"_id":user_obj_id},
+        {"_id": user_obj_id},
         {"$pull": {"friend_requests": sender_obj_id}}
     )
+    user_collection.update_one(
+        {"_id": sender_obj_id},
+        {"$pull": {"friend_requests": user_obj_id}}
+    )
 
-    #3. Thêm ID của nhau vào danh sách friend của cả 2 
+    # 3. Thêm ID của nhau vào danh sách friend của cả 2 
     user_collection.update_one(
         {"_id": user_obj_id},
         {"$addToSet":{"friends": sender_obj_id}}
@@ -163,9 +181,10 @@ def accept_friend_request(current_user_id: str, sender_id: str):
     return {"message": "Kết bạn thành công!"}
 
 def remove_friend_or_request(current_user_id: str, target_user_id: str):
-    """Dùng chung cho cả hủy và từ chôi lời mời"""
+    """Dùng chung cho cả hủy kết bạn và từ chối lời mời"""
     user_obj_id = ObjectId(current_user_id)
-    target_obj_id = ObjectId(target_obj_id)
+    # FIX LỖI CRASH Ở ĐÂY (Sửa target_obj_id thành target_user_id)
+    target_obj_id = ObjectId(target_user_id)
 
     # Xóa chéo ID của nhau khỏi CẢ 2 mảng (friends và friend_requests) của CẢ 2 người
     user_collection.update_one(
@@ -177,19 +196,3 @@ def remove_friend_or_request(current_user_id: str, target_user_id: str):
         {"$pull": {"friends": user_obj_id, "friend_requests": user_obj_id}}
     )
     return {"message": "Đã xóa trạng thái bạn bè/lời mời"}
-
-def get_my_friends_and_requests(current_user_id: str):
-    """Lấy danh sách bạn bè và những người đang xin kết bạn (để FE hiển thị)"""
-    user = user_collection.find_one({"_id": ObjectId(current_user_id)})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Lấy thông tin chi tiết của những người trong mảng friends
-    friends_cursor = user_collection.find({"_id": {"$in": user.get("friends", [])}})
-    # Lấy thông tin chi tiết của những người trong mảng friend_requests
-    requests_cursor = user_collection.find({"_id": {"$in": user.get("friend_requests", [])}})
-
-    return {
-        "friends": [user_helper(f) for f in friends_cursor],
-        "friend_requests": [user_helper(r) for r in requests_cursor]
-    }
