@@ -23,7 +23,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
 def create_refresh_token(data: dict, expires_delta: timedelta | None = None ) -> str: 
     to_encode = data.copy()
-    expires = datetime.utcnow() + (expires_delta or timedelta(minutes=int(REFRESH_TOKEN_EXPIRES_DAY)))
+    expires = datetime.utcnow() + (expires_delta or timedelta(days=int(REFRESH_TOKEN_EXPIRES_DAY)))
     if "type" not in to_encode:
         to_encode["type"] = "refresh"
     to_encode["exp"] = expires

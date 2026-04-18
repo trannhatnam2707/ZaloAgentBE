@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
+from datetime import datetime
 
 # 1. Schema khi Frontend gửi yêu cầu TẠO phòng chat
 class ConversationCreate(BaseModel):
@@ -19,6 +20,8 @@ class ConversationResponse(BaseModel):
     
     # Các trường này sẽ trả về null nếu type là 'direct'
     owner_id: Optional[str] = None
+    last_msg: Optional[str] = None
+    last_msg_time: Optional[datetime] = None
 
 class LeaveGroupRequest(BaseModel):
     user_id: str

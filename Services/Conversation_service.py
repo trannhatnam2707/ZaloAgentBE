@@ -1,7 +1,7 @@
 from datetime import datetime
 from bson import ObjectId
 from fastapi import HTTPException
-from Database.MongoDB import db
+from Database.MongoDB import db, messages_collection
 
 
 Conversation_collection = db.Conversations
@@ -95,7 +95,7 @@ class ConversationService:
             # "group_name": clean_name,
             "owner_id": owner_obj_id,
             "members":  obj_member_id,
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now()
         }
         result = Conversation_collection.insert_one(new_group)
         new_group["_id"] = result.inserted_id
@@ -119,7 +119,7 @@ class ConversationService:
             
             result = Conversation_collection.find_one_and_update(
                 {"_id": ObjectId(conversation_id)},
-                {"$pull": {"members": member_id}}
+                {"$pull": {"members": ObjectId(member_id)}}
             )
 
             if result.modified_count == 0:
@@ -143,7 +143,7 @@ class ConversationService:
         query = {"members": ObjectId(current_user_id)}
         clean_keyword = keyword.strip().lower()
         result = []
-        # Không lọc theo "name" trên Mongo: nhóm dùng trường "conv_name", chat 1-1 không lưu tên
+        # Không lọc theo "nrên Mongo: name" thóm dùng trường "conv_name", chat 1-1 không lưu tên
         # trong DB (tên hiển thị lấy từ Users). Lọc theo keyword chỉ sau khi gán conv_name bên dưới.
 
         cursor = Conversation_collection.find(query).sort([
@@ -167,7 +167,24 @@ class ConversationService:
             else:
                 # Group thì lấy conv_name từ DB
                 conv["conv_name"] = conv.get("conv_name", "Nhóm không tên")
+            
+            # Lấy tin nhắn mới nhất dựa trên conv_id
+            last_msg = messages_collection.find_one(
+                {
+                    "$or": [
+                        {"conversation_id": conv["id"]},         # Dạng String
+                        {"conversation_id": ObjectId(conv["id"])} # Dạng ObjectId
+                    ]
+                },
+                sort=[("created_at", -1)]
+            )
 
+            if last_msg:
+                conv["last_msg"] = last_msg.get("content", "")
+                conv["last_msg_time"] = last_msg.get("created_at")
+            else:
+                conv["last_msg"] = "Chưa có tin nhắn"
+                conv["last_msg_time"] = conv.get("updated_at") #Dùng tạm updated_at của phòng
 
             if clean_keyword:
                 display = (conv.get("conv_name") or "").lower()
