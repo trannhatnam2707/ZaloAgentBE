@@ -196,3 +196,19 @@ def remove_friend_or_request(current_user_id: str, target_user_id: str):
         {"$pull": {"friends": user_obj_id, "friend_requests": user_obj_id}}
     )
     return {"message": "Đã xóa trạng thái bạn bè/lời mời"}
+
+def get_my_friends_and_requests(current_user_id: str):
+    """Lấy danh sách bạn bè và những người đang xin kết bạn (để FE hiển thị)"""
+    user = user_collection.find_one({"_id": ObjectId(current_user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Lấy thông tin chi tiết của những người trong mảng friends
+    friends_cursor = user_collection.find({"_id": {"$in": user.get("friends", [])}})
+    # Lấy thông tin chi tiết của những người trong mảng friend_requests
+    requests_cursor = user_collection.find({"_id": {"$in": user.get("friend_requests", [])}})
+
+    return {
+        "friends": [user_helper(f) for f in friends_cursor],
+        "friend_requests": [user_helper(r) for r in requests_cursor]
+    }
