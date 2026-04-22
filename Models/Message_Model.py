@@ -22,4 +22,4 @@ class Messages_Model(BaseModel):
     #Metadata dùng kiểu Dict[str, Any] để chứa Object JSON tự do o (ví dụ: {"report_id": "..."})
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Dữ liệu đính kèm")
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now)

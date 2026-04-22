@@ -37,14 +37,14 @@ class MessageService:
             "type": data.type.value, # Lấy giá trị string từ Enum
             "content": data.content,
             "metadata": data.metadata,
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now()
         }
 
         # 3. Save Mongo
         result = Message_collection.insert_one(new_message)
         Conversation_collection.update_one(
             {"_id": ObjectId(conv_id)},
-            {"$set": {"updated_at": datetime.utcnow()}}
+            {"$set": {"updated_at": datetime.now()}}
         )
 
         # 4. Format lại dữ liệu đầu ra
@@ -90,13 +90,13 @@ class MessageService:
             "type": type,
             "content": content,
             "metadata": metadata,
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now()
         }
 
         result = Message_collection.insert_one(new_message)
         Conversation_collection.update_one(
             {"_id": ObjectId(conversation_id)},
-            {"$set": {"updated_at": datetime.utcnow()}}
+            {"$set": {"updated_at": datetime.now()}}
         )
         new_message["id"] = str(result.inserted_id)
         new_message["conversation_id"] = str(new_message["conversation_id"])
@@ -169,7 +169,7 @@ class MessageService:
         raw_text = re.sub(r'^/?report\s*:?\s*', '', content_strip, flags=re.IGNORECASE)
 
         # 2. Tìm xem ngay phần đầu câu có ngày tháng không (VD: 30/3/2026 hoặc 30-03-2026)
-        report_date = datetime.utcnow().strftime("%Y-%m-%d") # Mặc định là hôm nay
+        report_date = datetime.now().strftime("%Y-%m-%d") # Mặc định là hôm nay
         
         date_match = re.match(r'^(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s*:?\s*', raw_text)
         if date_match:
@@ -214,14 +214,14 @@ class MessageService:
                 "yesterday": created_report.get("yesterday"),
                 "today": created_report.get("today")
             },
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now()
         }
 
         result = Message_collection.insert_one(system_msg)
 
         Conversation_collection.update_one(
             {"_id": conv_id},
-            {"$set": {"updated_at": datetime.utcnow()}}
+            {"$set": {"updated_at": datetime.now()}}
         )
 
         system_msg["id"] = str(result.inserted_id)
