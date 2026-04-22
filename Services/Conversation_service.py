@@ -54,7 +54,7 @@ class ConversationService:
         new_chat = {
             "type": "direct",
             "members" : [user1, user2],
-            "created_at" : datetime.utcnow()
+            "created_at" : datetime.now()
         }
         result = Conversation_collection.insert_one(new_chat)
         new_chat["_id"] = result.inserted_id
