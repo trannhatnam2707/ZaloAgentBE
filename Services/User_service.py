@@ -36,7 +36,7 @@ def create_user(user_data: dict) -> dict:
 
     user_data["friends"] = []
 
-    user_data["friends_requests"] = []
+    user_data["friend_requests"] = []
 
     #lưu vào DB
     result = user_collection.insert_one(user_data)
@@ -121,94 +121,141 @@ def send_friend_request(sender_id: str, receiver_id: str):
     receiver_obj_id = ObjectId(receiver_id)
     sender_obj_id = ObjectId(sender_id)
 
-    # Phải lấy thông tin của cả 2 người ra để kiểm tra chéo
     receiver = user_collection.find_one({"_id": receiver_obj_id})
     sender = user_collection.find_one({"_id": sender_obj_id})
     
-    if not receiver: 
+    if not receiver or not sender: 
         raise HTTPException(status_code=404, detail="Người dùng không tồn tại!")
-    
+
+    # Chuyển ID về string để so sánh tuyệt đối chính xác
+    s_id_str = str(sender_obj_id)
+    r_id_str = str(receiver_obj_id)
+
+    receiver_requests = receiver.get("friend_requests", [])
+    sender_requests = sender.get("friend_requests", [])
+    receiver_friend = receiver.get("friends", [])
+
     # 1. Kiểm tra: Đã là bạn bè chưa?
-    if sender_obj_id in receiver.get("friends", []):
+    if any(str(f_id) == s_id_str for f_id in receiver_friend):
         raise HTTPException(status_code=400, detail="Hai người đã là bạn bè!")
 
-    # 2. Kiểm tra: Mình đã gửi lời mời cho họ chưa? (Chống spam click 2 lần)
-    if sender_obj_id in receiver.get("friend_requests", []):
+    if any(str(req.get("user_id")) == r_id_str and req.get("is_sender") == True 
+           for req in sender_requests):
         raise HTTPException(status_code=400, detail="Bạn đã gửi lời mời rồi, đang chờ người kia xác nhận!")
 
-    # 3. FIX BUG CHÍNH: Kiểm tra xem họ có đang gửi lời mời cho mình không?
-    if receiver_obj_id in sender.get("friend_requests", []):
+    # 3. KIỂM TRA: Họ đã gửi cho mình chưa?
+    # Check trong mảng của CHÍNH MÌNH (sender), xem có ai là receiver_id mà is_sender=False không
+    if any(str(req.get("user_id")) == r_id_str and req.get("is_sender") == False 
+           for req in sender_requests):
         raise HTTPException(status_code=400, detail="Người này đã gửi lời mời cho bạn rồi. Hãy kiểm tra danh sách lời mời và bấm Chấp nhận!")
 
-    # Nếu qua hết các bài test, mới tiến hành lưu
+    # Nếu pass các điều kiện trên mới tiến hành $push
     user_collection.update_one(
         {"_id": receiver_obj_id},
-        {"$addToSet": {"friend_requests": sender_obj_id}}
+        {"$push": {"friend_requests": {"user_id": sender_obj_id, "status": "pending", "is_sender": False}}}
     )
-
+    user_collection.update_one(
+        {"_id": sender_obj_id},
+        {"$push": {"friend_requests": {"user_id": receiver_obj_id, "status": "pending", "is_sender": True}}}
+    )
     return {"message": "Đã gửi lời mời kết bạn thành công"}
 
 def accept_friend_request(current_user_id: str, sender_id: str):
     user_obj_id = ObjectId(current_user_id)
-    sender_obj_id =  ObjectId(sender_id)
+    sender_obj_id = ObjectId(sender_id)
     
+    # Lấy thông tin user hiện tại (người bấm chấp nhận)
     user = user_collection.find_one({"_id": user_obj_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng!")
+
+    # 1. KIỂM TRA: Có lời mời từ sender_id trong mảng Object không?
+    # Phải dùng any() vì friend_requests là danh sách các dict {user_id: ..., status: ...}
+    requests = user.get("friend_requests", [])
+    has_request = any(str(req.get("user_id")) == str(sender_obj_id) for req in requests if isinstance(req, dict))
     
-    # 1. kiểm tra xem có lời mời không
-    if sender_obj_id not in user.get("friend_requests", []):
-        raise HTTPException(status_code=400, detail="Không tìm thấy lời mời kết bạn này!")
-    
-    # 2. Dọn dẹp mảng chờ: Rút người kia ra khỏi danh sách chờ của mình VÀ ngược lại (Đề phòng data rác từ lúc bị bug)
+    if not has_request:
+        raise HTTPException(status_code=400, detail="Không tìm thấy lời mời kết bạn từ người này!")
+
+    # 2. DỌN DẸP MẢNG CHỜ: Xóa yêu cầu kết bạn của nhau (Xóa Object có user_id tương ứng)
+    # Lưu ý: Phải dùng cấu trúc {"user_id": ...} trong $pull vì mảng chứa Object
     user_collection.update_one(
         {"_id": user_obj_id},
-        {"$pull": {"friend_requests": sender_obj_id}}
+        {"$pull": {"friend_requests": {"user_id": sender_obj_id}}}
     )
     user_collection.update_one(
         {"_id": sender_obj_id},
-        {"$pull": {"friend_requests": user_obj_id}}
+        {"$pull": {"friend_requests": {"user_id": user_obj_id}}}
     )
 
-    # 3. Thêm ID của nhau vào danh sách friend của cả 2 
+    # 3. KẾT BẠN: Thêm ID của nhau vào mảng friends (Lưu ID thuần để search $in nhanh)
+    # Dùng $addToSet để đảm bảo không bị trùng lặp ID
     user_collection.update_one(
         {"_id": user_obj_id},
-        {"$addToSet":{"friends": sender_obj_id}}
+        {"$addToSet": {"friends": sender_obj_id}}
     )
     user_collection.update_one(
-        {"_id":sender_obj_id},
-        {"$addToSet": {"friends":user_obj_id}}
+        {"_id": sender_obj_id},
+        {"$addToSet": {"friends": user_obj_id}}
     )
 
-    return {"message": "Kết bạn thành công!"}
+    return {"message": "Chúc mừng! Hai bạn đã trở thành bạn bè."}
 
 def remove_friend_or_request(current_user_id: str, target_user_id: str):
-    """Dùng chung cho cả hủy kết bạn và từ chối lời mời"""
     user_obj_id = ObjectId(current_user_id)
-    # FIX LỖI CRASH Ở ĐÂY (Sửa target_obj_id thành target_user_id)
     target_obj_id = ObjectId(target_user_id)
 
-    # Xóa chéo ID của nhau khỏi CẢ 2 mảng (friends và friend_requests) của CẢ 2 người
+    # Xóa trong mảng friends (mảng ID) và friend_requests (mảng Object)
     user_collection.update_one(
         {"_id": user_obj_id},
-        {"$pull": {"friends": target_obj_id, "friend_requests": target_obj_id}}
+        {
+            "$pull": {
+                "friends": target_obj_id, 
+                "friend_requests": {"user_id": target_obj_id} # Sửa ở đây
+            }
+        }
     )
     user_collection.update_one(
         {"_id": target_obj_id},
-        {"$pull": {"friends": user_obj_id, "friend_requests": user_obj_id}}
+        {
+            "$pull": {
+                "friends": user_obj_id, 
+                "friend_requests": {"user_id": user_obj_id} # Sửa ở đây
+            }
+        }
     )
     return {"message": "Đã xóa trạng thái bạn bè/lời mời"}
 
 def get_my_friends_and_requests(current_user_id: str):
-    """Lấy danh sách bạn bè và những người đang xin kết bạn (để FE hiển thị)"""
     user = user_collection.find_one({"_id": ObjectId(current_user_id)})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Lấy thông tin chi tiết của những người trong mảng friends
-    friends_cursor = user_collection.find({"_id": {"$in": user.get("friends", [])}})
-    # Lấy thông tin chi tiết của những người trong mảng friend_requests
-    requests_cursor = user_collection.find({"_id": {"$in": user.get("friend_requests", [])}})
+    # Lấy thông tin bạn bè (mảng ID thuần)
+    friend_ids = [ObjectId(f) for f in user.get("friends", [])]
+    friends_cursor = user_collection.find({"_id": {"$in": friend_ids}})
+
+    # Lấy thông tin lời mời (trích xuất user_id từ mảng Object)
+    raw_requests = user.get("friend_requests", [])
+    
+    # Tạo danh sách ID để query thông tin user một lần cho nhanh
+    req_user_ids = [ObjectId(req["user_id"]) for req in raw_requests if isinstance(req, dict)]
+    users_info_cursor = user_collection.find({"_id": {"$in": req_user_ids}})
+    
+    # Chuyển cursor thành dict để map dữ liệu nhanh hơn
+    users_dict = {str(u["_id"]): user_helper(u) for u in users_info_cursor}
+
+    # Kết hợp thông tin User với is_sender/status từ mảng raw_requests
+    enriched_requests = []
+    for req in raw_requests:
+        u_id_str = str(req["user_id"])
+        if u_id_str in users_dict:
+            info = users_dict[u_id_str].copy()
+            info["is_sender"] = req.get("is_sender")
+            info["status"] = req.get("status")
+            enriched_requests.append(info)
 
     return {
         "friends": [user_helper(f) for f in friends_cursor],
-        "friend_requests": [user_helper(r) for r in requests_cursor]
+        "friend_requests": enriched_requests
     }

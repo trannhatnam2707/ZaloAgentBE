@@ -100,7 +100,7 @@ class ConversationAgent:
         )
         try:
             print(f"[AGENT] Đang gửi request và tools đến cho Gemini...")
-            chat = self.ai_client.chats.create(
+            chat = self.ai_client.chats.create( 
                 model = "gemini-2.5-flash",
                 config = config,
                 history = memory.get_gemini_history(),
