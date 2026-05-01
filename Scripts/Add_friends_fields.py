@@ -1,17 +1,31 @@
 from pymongo import MongoClient
+from bson import ObjectId
 
-# Kết nối tới DB của bạn
 client = MongoClient("mongodb://localhost:27017/")
-db = client["AgentZalo"] # Sửa lại tên DB nếu bạn đặt khác
+db = client["AgentZalo"]
 
-# Tìm và Cập nhật TẤT CẢ user: 
-# Nếu chưa có mảng friends thì set cho nó 2 mảng rỗng
-result = db.Users.update_many(
-    {"friends": {"$exists": False}}, # Điều kiện: những user chưa có trường này
-    {"$set": {
-        "friends": [],
-        "friend_requests": []
-    }}
-)
+users = db.Users.find()
 
-print(f"Đã cập nhật thành công {result.modified_count} tài khoản cũ!")
+for user in users:
+    official_friends = [] 
+    pending_requests = []   
+
+    if "friends" in user and isinstance(user["friends"], list):
+        for item in user["friends"]:
+            if isinstance(item, dict) and item.get("status") == "accepted":
+                official_friends.append(item["user_id"])
+            elif isinstance(item, dict) and item.get("status") == "pending":
+                pending_requests.append(item)
+            elif isinstance(item, ObjectId):
+                official_friends.append(item)
+
+    db.Users.update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {
+                "friends": official_friends,
+                "friend_requests": pending_requests
+            }
+        }
+    )
+

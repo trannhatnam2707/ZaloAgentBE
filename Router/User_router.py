@@ -70,6 +70,7 @@ def api_get_user_by_username(
     username: str,
     current_user: dict = Depends(get_current_user) #Gắn bảo vệ
 ):
+    """Tìm bạn bè đã addfr"""
     # current_user ở đây đóng vai trò "Vệ sĩ gác cổng". 
     # Mặc dù không dùng đến nó ở bên trong hàm, nhưng nếu không có Token hợp lệ, 
     # FastAPI sẽ chửi lỗi 401 và chặn ngay ở cửa, không cho code chạy xuống dòng dưới.
