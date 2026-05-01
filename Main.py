@@ -3,7 +3,7 @@ from Config.Cors_config import configure_cors
 
 from Router import Ask_router, Message_router, Report_router, User_router, Conversation_router
 
-
+    
 app = FastAPI()
 
 # Cấu hình CORS
