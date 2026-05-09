@@ -1,7 +1,7 @@
 import datetime
 from bson import ObjectId
 from fastapi import HTTPException
-from Database.MongoDB import get_mongo_collection, users_collection
+from Database.MongoDB import get_mongo_collection, users_collection, db
 from Database.Pinecone import index
 
 
@@ -61,6 +61,20 @@ def create_report(data: dict) -> dict:
 #Get All
 def get_all_reports() -> list:
     reports = reports_collection.find()
+    return [report_helper(report) for report in reports]
+
+#Get by conversation_id
+def get_reports_by_conversation(conversation_id: str, current_user_id: str) -> list:
+    try:
+        conv_id = ObjectId(conversation_id)
+    except:
+        raise HTTPException(status_code=400, detail="ID phòng chat không hợp lệ")
+
+    conversation = db.Conversations.find_one({"_id": conv_id})
+    if not conversation or ObjectId(current_user_id) not in conversation.get("members", []):
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem báo cáo trong phòng chat này!")
+
+    reports = reports_collection.find({"conversation_id": conv_id}).sort("created_at", -1)
     return [report_helper(report) for report in reports]
 
 #get by user_id
