@@ -15,6 +15,10 @@ def user_helper(user) -> dict:
         "id": str(user["_id"]),
         "account": user.get("account", ""),
         "username": user["username"],
+        "avatar": user.get(
+            "avatar",
+            f"https://api.dicebear.com/7.x/initials/svg?seed={user.get('username','user')}&backgroundColor=60a5fa"
+        )
     }
 
 # Create User
@@ -53,7 +57,7 @@ def login_user(account: str, password: str) -> dict:
     #Tìm user với account và password
     user = user_collection.find_one({
         "account" : account,
-        "password" : hashed_password
+        "password" : hashed_password    
     }) 
 
     if not user:
@@ -229,7 +233,7 @@ def remove_friend_or_request(current_user_id: str, target_user_id: str):
 def get_my_friends_and_requests(current_user_id: str):
     user = user_collection.find_one({"_id": ObjectId(current_user_id)})
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found")   
 
     # Lấy thông tin bạn bè (mảng ID thuần)
     friend_ids = [ObjectId(f) for f in user.get("friends", [])]
