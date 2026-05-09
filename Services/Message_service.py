@@ -17,7 +17,7 @@ class MessageService:
         try:
             conv_id = ObjectId(data.conversation_id)
         except: 
-            raise HTTPException(status_cod=400, detail="ID phòng chat không hợp lệ")
+            raise HTTPException(status_code=400, detail="ID phòng chat không hợp lệ")
 
         conversation = Conversation_collection.find_one({"_id": conv_id})
         if not conversation: 
@@ -104,7 +104,15 @@ class MessageService:
     
     @staticmethod
     def get_ai_bubble_history(conversation_id: str, current_user_id: str):
-        conv_id = ObjectId(conversation_id)
+        try:
+            conv_id = ObjectId(conversation_id)
+        except:
+            raise HTTPException(status_code=400, detail="ID phòng chat không hợp lệ")
+            
+        conversation = Conversation_collection.find_one({"_id": conv_id})
+        if not conversation or ObjectId(current_user_id) not in conversation.get("members", []):
+            raise HTTPException(status_code=403, detail="Bạn không có quyền xem tin nhắn này!")
+
         cursor = Message_collection.find({
             "conversation_id": conv_id,
             "metadata.is_ai_bubble": True
