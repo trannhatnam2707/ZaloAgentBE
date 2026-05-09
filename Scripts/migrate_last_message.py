@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from Database.MongoDB import Conversation_collection, messages_collection
 
-async def migrate_conversation_data():
+def migrate_conversation_data():
     print("Bắt đầu cập nhật thông tin tin nhắn cuối cho Conversation...")
     
     # 1. Lấy tất cả hội thoại

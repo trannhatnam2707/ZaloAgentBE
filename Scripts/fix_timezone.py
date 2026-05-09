@@ -3,13 +3,13 @@ import os
 from datetime import datetime, timedelta
 from bson import ObjectId
 import asyncio
-
+    
 # Thêm đường dẫn để import module từ dự án
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from Database.MongoDB import Conversation_collection, messages_collection
 
-async def fix_timezone():
+def fix_timezone():
     print("Bắt đầu sửa lỗi múi giờ cho dữ liệu...")
     
     # Múi giờ chênh lệch (Ví dụ: Nếu DB đang chậm hơn 7 tiếng, ta cộng thêm 7)
