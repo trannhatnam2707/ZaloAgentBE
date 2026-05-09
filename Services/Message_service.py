@@ -17,7 +17,7 @@ class MessageService:
         try:
             conv_id = ObjectId(data.conversation_id)
         except: 
-            raise HTTPException(status_cod=400, detail="ID phòng chat không hợp lệ")
+            raise HTTPException(status_code=400, detail="ID phòng chat không hợp lệ")
 
         conversation = Conversation_collection.find_one({"_id": conv_id})
         if not conversation: 
