@@ -8,8 +8,8 @@ class MessageController:
         return MessageService.send_message(data, current_user_id)
 
     @staticmethod
-    async def get_messages(conversation_id: str, current_user_id: str, skip: int, limit: int):
-        return await MessageService.get_conversation_messages(conversation_id, current_user_id, skip, limit)
+    def get_messages(conversation_id: str, current_user_id: str, skip: int, limit: int):
+        return MessageService.get_conversation_messages(conversation_id, current_user_id, skip, limit)
 
     @staticmethod
     def get_ai_history(conversation_id: str, current_user_id: str):

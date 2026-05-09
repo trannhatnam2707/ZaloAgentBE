@@ -15,7 +15,7 @@ def api_send_message(
     return MessageController.send_new_message(data, user_id)
 
 @router.get("/{conversation_id}", response_model=List[MessageResponse])
-async def api_get_message_history( 
+def api_get_message_history( 
     conversation_id: str,
     skip: int = Query(0, description="Bỏ qua bao nhiêu tin nhắn"),
     limit: int = Query(50, description="lấy tối đa bao nhiêu tin nhắn 1 lần"),
@@ -24,8 +24,8 @@ async def api_get_message_history(
     # Lấy ID của user hiện tại
     user_id = str(current_user["_id"])
     
-    # THÊM await ở đây để thực thi coroutine
-    messages = await MessageController.get_messages(conversation_id, user_id, skip, limit)
+   
+    messages =  MessageController.get_messages(conversation_id, user_id, skip, limit)
     
     return messages
 

@@ -55,7 +55,7 @@ class MessageService:
         return new_message
 
     @staticmethod
-    async def get_conversation_messages(conv_id: str, current_user_id: str, page: int = 1, limit: int = 50):
+    def get_conversation_messages(conv_id: str, current_user_id: str, skip: int = 0, limit: int = 50):
         try:
             # 1. Kiểm tra tính hợp lệ của ObjectId
             try:
@@ -64,7 +64,7 @@ class MessageService:
                 raise HTTPException(status_code=400, detail="ID hội thoại không hợp lệ")
 
             # 2. Tìm hội thoại để kiểm tra quyền truy cập
-            conversation = await db.conversations.find_one({"_id": obj_conv_id})
+            conversation =  db.Conversations.find_one({"_id": obj_conv_id})
             if not conversation:
                 raise HTTPException(status_code=404, detail="Hội thoại không tồn tại")
 
@@ -76,17 +76,14 @@ class MessageService:
                 print(f"FORBIDDEN: User {user_id_str} not in {members_list}")
                 raise HTTPException(status_code=403, detail="Bạn không có quyền xem tin nhắn này")
 
-            # 4. Tính toán skip cho phân trang
-            skip = (page - 1) * limit
-
             # 5. Lấy tin nhắn có filter theo conversation_id, skip và limit
             # Sắp xếp timestamp -1 để lấy tin nhắn mới nhất trước, sau đó reverse ở FE hoặc BE
-            messages_cursor = db.messages.find({"conversation_id": conv_id}) \
+            messages_cursor = db.messages.find({"conversation_id": obj_conv_id}) \
                                         .sort("timestamp", -1) \
                                         .skip(skip) \
                                         .limit(limit)
             
-            messages = await messages_cursor.to_list(length=limit)
+            messages = messages_cursor.to_list(length=limit)
             
             # Format lại dữ liệu và đảo ngược lại thứ tự để hiển thị từ cũ đến mới
             formatted_messages = []

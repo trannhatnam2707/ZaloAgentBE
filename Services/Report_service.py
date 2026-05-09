@@ -71,8 +71,13 @@ def get_reports_by_conversation(conversation_id: str, current_user_id: str) -> l
         raise HTTPException(status_code=400, detail="ID phòng chat không hợp lệ")
 
     conversation = db.Conversations.find_one({"_id": conv_id})
-    if not conversation or ObjectId(current_user_id) not in conversation.get("members", []):
-        raise HTTPException(status_code=403, detail="Bạn không có quyền xem báo cáo trong phòng chat này!")
+    if not conversation:
+        print(f"DEBUG: Không tìm thấy conversation với ID: {conv_id}")
+        raise HTTPException(status_code=404, detail="Không tìm thấy phòng chat")
+    user_str = str(current_user_id)
+    member_list_str = [str(m) for m in conversation.get("members", [])]
+    if user_str not in member_list_str:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem báo cáo này")
 
     reports = reports_collection.find({"conversation_id": conv_id}).sort("created_at", -1)
     return [report_helper(report) for report in reports]
