@@ -1,9 +1,14 @@
+from fileinput import filename
 from Utils.JWT import create_access_token, create_refresh_token
 from fastapi import HTTPException
 from Schemas.User_schema import UserCreate, UserLogin
 from Services import User_service 
 from bson import ObjectId
 from Utils.JWT import verify_refresh_token
+from fastapi import UploadFile
+from uuid import uuid4
+import shutil
+import os
 
 def handle_register(user: UserCreate):
     try:
@@ -99,3 +104,38 @@ def handle_remove_friend(current_user_id: str, target_user_id: str):
 
 def handle_get_friends_data(current_user_id: str):
     return User_service.get_my_friends_and_requests(current_user_id)
+
+def handle_update_profile(current_user_id: str, username: str = None ,file: UploadFile = None):
+    try:
+        update_data = {}
+        if username:
+            update_data["username"] = username
+
+        if file:
+            # Đảm bảo thư mục tồn tại trước khi lưu
+            os.makedirs("Uploads/Avatars", exist_ok=True)
+
+            # Tạo tên file ngẫu nhiên không trùng (vd:abc123.png)
+            ext = file.filename.split(".")[-1]
+            filename = f"{uuid4()}.{ext}"
+            file_path = f"Uploads/Avatars/{filename}"
+
+            #Lưu file từ Ram vào xuống SSD:
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            # Tạo đường dẫn tương đối (Frontend sẽ tự ghép với BASE_URL)
+            avatar_url = f"/uploads/avatars/{filename}"
+            update_data["avatar"] = avatar_url
+
+        if not update_data:
+            return {"message": "Không có thông tin nào bị thay đổi!"}
+
+        #Lưu URL vào DB
+        User_service.update_data(current_user_id, update_data)
+
+        return {"message": "Cập nhật thành công!",
+                "update_data": update_data
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Lỗi khi cập nhật: " + str(e))

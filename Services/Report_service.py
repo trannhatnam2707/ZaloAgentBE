@@ -22,31 +22,27 @@ def report_helper(report) -> dict:
         "today": report["today"],
         "created_at": report["created_at"],
         "updated_at": report["updated_at"],
-        "conversation_id": ObjectId(report.get("conversation_id", ""))
+        "conversation_id": str(report.get("conversation_id", ""))
     }
     
 #Create
 def create_report(data: dict) -> dict: 
-    # Tìm user theo user_name để lấy user_id
-    user = users_collection.find_one({"username": data["user_name"]})
-    if not user:
-        raise ValueError("User not found")
 
-    #check trùng lặp tránh spam report
+    user_id = data.get("user_id")
+    
+
+    # Check trùng lặp chuẩn xác tuyệt đối
     existing_report = reports_collection.find_one({
-        "user_id":user["_id"],
+        "user_id": {"$in": [user_id, str(user_id), ObjectId(user_id)]},
         "date": data["date"]
     })
+    
     if existing_report:
         raise HTTPException(
             status_code=400,
-            detail=f"Bạn đã có báo cáo cho ngày {data["date"]} rồi! Hãy cập nhật nếu bạn muốn sửa đổi lại nội dung report "
+            detail=f"Bạn đã có báo cáo cho ngày {data['date']} rồi! Hãy cập nhật nếu bạn muốn sửa đổi lại nội dung report."
         )
-    
-    # Thay thế user_name bằng user_id
-    data["user_id"] = user["_id"]
-    data.pop("user_name", None)  # Xóa user_name khỏi data
-    
+    data["user_id"] = ObjectId(str(user_id))
     data["created_at"] = datetime.datetime.utcnow()
     data["updated_at"] = datetime.datetime.utcnow()
     
@@ -103,15 +99,37 @@ def update_report(id: str, data: dict) -> dict | None :
     return None 
 
 #delete
-def delete_report(id: str) -> bool:
-    """Xóa trong Mongo và Pinecone"""
-    result = reports_collection.delete_one({"_id": ObjectId(id)})
+# Services/Report_service.py
 
-    if result.deleted_count:
-        # Xóa toàn bộ vector có metadata.report_id = id
-        index.delete(filter={"report_id": id})
-        print(f" Deleted report {id} khỏi Mongo & Pinecone")
-        return True
-    else: 
-        print(f" Report {id} không tồn tại trong Mongo")
+def delete_report(id: str) -> bool:
+    """Xóa trong Mongo (cả bảng Report và Messages) và Pinecone"""
+    try:
+        report_id_obj = ObjectId(id)
+        
+        # 1. Tìm thông tin report trước khi xóa để lấy dữ liệu đồng bộ
+        report = reports_collection.find_one({"_id": report_id_obj})
+        if not report:
+            return False
+
+        # 2. XÓA TIN NHẮN TƯƠNG ỨNG TRONG BẢNG MESSAGES (Quan trọng để mất trên UI)
+        # Chúng ta tìm tin nhắn có metadata.report_id trùng với id của report đang xóa
+        from Database.MongoDB import db
+        db.Messages.delete_many({"metadata.report_id": id}) 
+
+        # 3. Xóa trong bảng Report
+        result = reports_collection.delete_one({"_id": report_id_obj})
+
+        # 4. Xóa trong Pinecone (giữ nguyên logic cũ của bạn)
+        try:
+            from Database.Pinecone import index
+            index.delete(filter={"report_id": id})
+            print(f" Deleted report {id} khỏi Mongo & Pinecone")
+            return True
+
+        except Exception as e:
+            print(f"Lỗi xóa Pinecone: {e}")
+
+        return result.deleted_count > 0
+    except Exception as e:
+        print(f"Lỗi khi xóa report: {e}")
         return False

@@ -9,9 +9,29 @@ from Middleware.Auth_middleware import get_current_user
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
 #Create Report
-@router.post("/", response_model=ReportResponse)
-def api_create_report(report: ReportCreate, current_user: dict = Depends(get_current_user)):
-    return create_report(report.dict())
+@router.post("/")
+def api_create_report(
+    report: ReportCreate, 
+    current_user: dict = Depends(get_current_user) # Hàm check token của bạn
+):
+    # 1. IN RA ĐỂ XEM TOKEN ĐANG CHỨA GÌ (Xem log ở Terminal)
+    print("DEBUG CURRENT_USER:", current_user)
+
+    # 2. Lấy ID an toàn (Quét mở rộng các key thường dùng trong JWT)
+    raw_id = current_user.get("_id") or current_user.get("id") or current_user.get("user_id") or current_user.get("sub")
+    
+    # 3. CHẶN ĐỨNG NẾU ID BỊ RỖNG
+    if not raw_id:
+        raise HTTPException(
+            status_code=401, 
+            detail=f"Không thể xác định ID người dùng! Dữ liệu token hiện tại: {current_user}"
+        )
+
+    # 4. Gán ID chuẩn xác vào data
+    data = report.dict()
+    data["user_id"] = str(raw_id) 
+    
+    return create_report(data)
 
 #Get All Reports
 @router.get("/", response_model=list[ReportResponse])

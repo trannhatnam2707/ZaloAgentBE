@@ -20,4 +20,5 @@ class UserResponse(UserBase):
     username: str
     message: Optional[str] = None   
     friends: Optional[List[str]] = []
-    friends_requests : Optional[List[str]] = []
+    friend_requests : Optional[List[str]] = []
+    avatar: Optional[str] = None

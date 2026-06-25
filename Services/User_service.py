@@ -15,10 +15,7 @@ def user_helper(user) -> dict:
         "id": str(user["_id"]),
         "account": user.get("account", ""),
         "username": user["username"],
-        "avatar": user.get(
-            "avatar",
-            f"https://api.dicebear.com/7.x/initials/svg?seed={user.get('username','user')}&backgroundColor=60a5fa"
-        )
+        "avatar": user.get("avatar", "")
     }
 
 # Create User
@@ -41,6 +38,8 @@ def create_user(user_data: dict) -> dict:
     user_data["friends"] = []
 
     user_data["friend_requests"] = []
+
+    user_data["avatar"] = ""
 
     #lưu vào DB
     result = user_collection.insert_one(user_data)
@@ -130,7 +129,6 @@ def send_friend_request(sender_id: str, receiver_id: str):
     
     if not receiver or not sender: 
         raise HTTPException(status_code=404, detail="Người dùng không tồn tại!")
-
     # Chuyển ID về string để so sánh tuyệt đối chính xác
     s_id_str = str(sender_obj_id)
     r_id_str = str(receiver_obj_id)
@@ -167,8 +165,7 @@ def send_friend_request(sender_id: str, receiver_id: str):
 def accept_friend_request(current_user_id: str, sender_id: str):
     user_obj_id = ObjectId(current_user_id)
     sender_obj_id = ObjectId(sender_id)
-    
-    # Lấy thông tin user hiện tại (người bấm chấp nhận)
+        # Lấy thông tin user hiện tại (người bấm chấp nhận)
     user = user_collection.find_one({"_id": user_obj_id})
     if not user:
         raise HTTPException(status_code=404, detail="Không tìm thấy người dùng!")
@@ -263,3 +260,9 @@ def get_my_friends_and_requests(current_user_id: str):
         "friends": [user_helper(f) for f in friends_cursor],
         "friend_requests": enriched_requests
     }
+
+def update_data(current_user_id: str, data_update: dict):
+    user_collection.update_one(
+        {"_id": ObjectId(current_user_id)},
+        {"$set": data_update}
+    )

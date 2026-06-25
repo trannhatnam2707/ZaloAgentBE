@@ -3,13 +3,15 @@ from Database.Pinecone import search_pinecone
 from Services.Report_service import create_report, delete_report, update_report
 
 
-def tool_create_report(user_name: str, date: str, yesterday: str, today: str, conversation_id: str) -> str:
+def tool_create_report(user_id: str, user_name: str, date: str, yesterday: str, today: str, conversation_id: str) -> str:
     """
         Sử dụng Tool này để tạo 1 report mới cho người dùng.
-        Bắt buộc phải thu thập đầy đủ 5 Thông tin sau: user_name, date, yesterday, today, conversation_id.
+        Bắt buộc phải thu thập đầy đủ 6 Thông tin sau: user_id, user_name, date, yesterday, today, conversation_id.
+        (Tham số user_id và user_name đã được cung cấp trong System Prompt, conversation_id cũng vậy).
     """
     try:
         report_data = {
+            "user_id": user_id,
             "user_name": user_name,
             "date" : date,
             "yesterday" : yesterday,
@@ -17,7 +19,7 @@ def tool_create_report(user_name: str, date: str, yesterday: str, today: str, co
             "conversation_id" : conversation_id
         }
         created = create_report(report_data)
-        return f"Đã tạo thành công báo cáo ngày {created.get(date)} cho {user_name}. ID báo cáo: {created.get("id")}"
+        return f"Đã tạo thành công báo cáo ngày {created.get('date')} cho {user_name}. ID báo cáo: {created.get('id')}"
     except Exception as e:
         return f"Lỗi khi tạo báo cáo: {str(e)}"
 
@@ -79,14 +81,23 @@ def tool_search_reports(
 
         pincone_filter: dict = {"conversation_id": {"$eq": conversation_id}}
 
-        if (filter_reporter_name or "").strip():
-            pincone_filter["user_name"] = {"$eq": (filter_reporter_name or "").strip()}
-
-        results = search_pinecone(embedding, top_k, filter=pincone_filter)
+        # Gọi Pinecone (bỏ lọc cứng user_name vì dễ bị lỗi hoa thường/dấu)
+        # Tăng top_k lên để đảm bảo lấy đủ ứng viên
+        results = search_pinecone(embedding, max(top_k, 50), filter=pincone_filter)
         matches = results.get("matches", [])
 
-        valid_matches = [m for m in matches if m.get("score", 0) >= 0.5]
+        # Hạ mức điểm tổi thiểu (do text vector không chứa tên người)
+        valid_matches = [m for m in matches if m.get("score", 0) >= 0.3]
 
+        # Lọc MỀM (Soft match) user_name tại Python
+        if (filter_reporter_name or "").strip():
+            filter_name_lower = filter_reporter_name.strip().lower()
+            valid_matches = [
+                m for m in valid_matches
+                if filter_name_lower in m.get("metadata", {}).get("user_name", "Unknown").lower()
+            ]
+
+        # Lọc ngày tháng
         if date_filter:
             valid_matches = [
                 m for m in valid_matches
@@ -94,7 +105,7 @@ def tool_search_reports(
             ]
 
         if not valid_matches:
-            return f"Không tìm thấy báo cáo nào trong phòng chat này khớp với từ khóa tìm kiếm: {query!r}"
+            return f"Không tìm thấy báo cáo nào trong phòng chat này khớp với từ khóa tìm kiếm: {query!r} và người báo cáo {filter_reporter_name}"
 
         res_text = f" Tìm thấy {len(valid_matches)} báo cáo:\n\n"
         for i, match in enumerate(valid_matches,1):

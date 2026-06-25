@@ -1,10 +1,11 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Form
 from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordRequestForm
 from Schemas.User_schema import UserCreate, UserLogin, UserResponse
 from Controller import User_Controller
 from Middleware.Auth_middleware import get_current_user
+from fastapi import UploadFile,File
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -103,3 +104,11 @@ def api_remove_friend_or_request(target_user_id: str, current_user: dict = Depen
     user_id = str(current_user["_id"])
     return User_Controller.handle_remove_friend(user_id, target_user_id)
 
+@router.patch("/profile/")
+def api_update_profile(current_user: dict = Depends(get_current_user), username: str = Form(None),file: UploadFile = File(None)):
+    """API cập nhật thông tin của người dùng"""
+    if file and not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận file ảnh")
+    
+    user_id = str(current_user["_id"])
+    return User_Controller.handle_update_profile(user_id, username, file)
